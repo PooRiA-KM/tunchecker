@@ -10,7 +10,7 @@ class VPNMonitorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VPN Monitor & Telegram Notifier")
-        self.root.geometry("420x450")
+        self.root.geometry("450x520")
         self.root.resizable(False, False)
 
         # متغیرهای وضعیت
@@ -18,11 +18,26 @@ class VPNMonitorApp:
         self.monitor_thread = None
 
         self.setup_ui()
+        self.refresh_adapters()
 
     def setup_ui(self):
         style = ttk.Style()
         style.configure("TLabel", font=("Tahoma", 9))
         style.configure("TButton", font=("Tahoma", 9))
+
+        # فریم انتخاب کارت شبکه
+        frame_adapter = ttk.LabelFrame(self.root, text=" انتخاب کارت شبکه ", padding=10)
+        frame_adapter.pack(fill="x", padx=10, pady=5)
+
+        ttk.Label(frame_adapter, text="کارت شبکه:").grid(row=0, column=0, sticky="w", pady=5)
+
+        # منوی کشویی برای لیست آداپتورها
+        self.combo_adapters = ttk.Combobox(frame_adapter, state="readonly", width=28)
+        self.combo_adapters.grid(row=0, column=1, padx=5, pady=5)
+
+        # دکمه بروزرسانی لیست آداپتورها
+        btn_refresh = ttk.Button(frame_adapter, text="🔄", width=3, command=self.refresh_adapters)
+        btn_refresh.grid(row=0, column=2, padx=2)
 
         # فریم تنظیمات زمان‌بندی
         frame_interval = ttk.LabelFrame(self.root, text=" تنظیمات زمان‌بندی ", padding=10)
@@ -68,24 +83,63 @@ class VPNMonitorApp:
         self.btn_toggle = ttk.Button(frame_actions, text="شروع مانیتورینگ", command=self.toggle_monitoring)
         self.btn_toggle.pack(fill="x", pady=5)
 
-    def is_openvpn_connected(self):
+    def get_network_adapters(self):
         """
-        بررسی وضعیت کارت شبکه OpenVPN (TAP / TUN / Wintun) در ویندوز
+        دریافت نام تمام کارت‌های شبکه سیستم‌عامل
         """
+        adapters = []
         try:
-            # اجرا دستور netsh برای بررسی وضعیت آداپتورهای شبکه
             output = subprocess.check_output(
                 ["netsh", "interface", "show", "interface"],
                 creationflags=subprocess.CREATE_NO_WINDOW
             ).decode('utf-8', errors='ignore')
 
-            # بررسی خط به خط آداپتورها
+            lines = output.splitlines()
+            for line in lines:
+                parts = line.split()
+                # خروجی netsh شامل Admin State, State, Type, Interface Name است
+                # نام کارت شبکه معمولا بخش آخر سطر است
+                if len(parts) >= 4 and parts[0] in ["Enabled", "Disabled"]:
+                    adapter_name = " ".join(parts[3:])
+                    adapters.append(adapter_name)
+        except Exception as e:
+            print(f"خطا در دریافت کارت‌های شبکه: {e}")
+        return adapters
+
+    def refresh_adapters(self):
+        """
+        بروزرسانی لیست منوی کشویی کارت‌های شبکه
+        """
+        adapters = self.get_network_adapters()
+        self.combo_adapters['values'] = adapters
+        if adapters:
+            # سعی می‌کند پیش‌فرض کارت شبکه‌ای که کلمه TAP یا OpenVPN دارد را انتخاب کند
+            default_index = 0
+            for idx, name in enumerate(adapters):
+                if any(k in name.lower() for k in ["tap", "openvpn", "wintun", "tun"]):
+                    default_index = idx
+                    break
+            self.combo_adapters.current(default_index)
+
+    def is_openvpn_connected(self):
+        """
+        بررسی وضعیت کارت شبکه انتخاب‌شده در منوی کشویی
+        """
+        selected_adapter = self.combo_adapters.get()
+        if not selected_adapter:
+            return False
+
+        try:
+            output = subprocess.check_output(
+                ["netsh", "interface", "show", "interface"],
+                creationflags=subprocess.CREATE_NO_WINDOW
+            ).decode('utf-8', errors='ignore')
+
             for line in output.splitlines():
-                line_lower = line.lower()
-                # کارت شبکه‌های مربوط به OpenVPN معمولا TAP، TUN یا OpenVPN نام دارند
-                if any(k in line_lower for k in ["Local Area Connection"]):
-                    # چک کردن اینکه وضعیت کارت شبکه Connected است یا خیر
-                    if "Connected" in line_lower and "Disconnected" not in line_lower:
+                if selected_adapter in line:
+                    line_lower = line.lower()
+                    # بررسی اتصال بر اساس کلیدواژه Connected
+                    if "connected" in line_lower and "disconnected" not in line_lower:
                         return True
             return False
         except Exception:
@@ -129,14 +183,15 @@ class VPNMonitorApp:
                 interval = 10
 
             connected = self.is_openvpn_connected()
+            selected_adapter = self.combo_adapters.get()
 
             if connected:
-                self.lbl_status.config(text="وضعیت: کارت شبکه OpenVPN متصل است", foreground="green")
+                self.lbl_status.config(text=f"وضعیت: {selected_adapter} متصل است", foreground="green")
                 was_connected = True
             else:
-                self.lbl_status.config(text="وضعیت: کارت شبکه OpenVPN قطع شد!", foreground="red")
+                self.lbl_status.config(text=f"وضعیت: {selected_adapter} قطع شد!", foreground="red")
                 if was_connected:
-                    self.send_telegram_alert("⚠️ هشدار: اتصال شبکه OpenVPN سیستم شما قطع شد!")
+                    self.send_telegram_alert(f"⚠️ هشدار: اتصال کارت شبکه ({selected_adapter}) قطع شد!")
                     was_connected = False
 
             for _ in range(interval):
@@ -146,6 +201,10 @@ class VPNMonitorApp:
 
     def toggle_monitoring(self):
         if not self.is_running:
+            if not self.combo_adapters.get():
+                self.lbl_status.config(text="خطا: هیچ کارت شبکه‌ای انتخاب نشده است", foreground="red")
+                return
+
             self.is_running = True
             self.btn_toggle.config(text="توقف مانیتورینگ")
             self.toggle_inputs(state="disabled")
@@ -159,6 +218,7 @@ class VPNMonitorApp:
             self.toggle_inputs(state="normal")
 
     def toggle_inputs(self, state):
+        self.combo_adapters.config(state="disabled" if state == "disabled" else "readonly")
         self.entry_interval.config(state=state)
         self.entry_proxy_ip.config(state=state)
         self.entry_proxy_port.config(state=state)
