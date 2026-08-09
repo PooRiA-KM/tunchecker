@@ -254,8 +254,8 @@ class VPNMonitorApp:
         self.entry_proxy_port.config(state=state)
         self.entry_bot_token.config(state=state)
         self.entry_chat_id.config(state=state)
-        self.btn_toggle_token.config(state=state)
-        self.btn_toggle_chat_id.config(state=state)
+        #self.btn_toggle_token.config(state=state)
+        #self.btn_toggle_chat_id.config(state=state)
 
 
 if __name__ == "__main__":
