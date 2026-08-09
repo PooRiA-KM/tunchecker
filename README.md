@@ -1,4 +1,4 @@
-```markdown
+
 # VPN Connection Monitor & Telegram Notifier
 
 A lightweight Python desktop application built with `tkinter` to monitor the real-time status of your specific network interface (such as OpenVPN TAP/TUN/Wintun adapters). If the selected network adapter disconnects, the app immediately sends an alert notification to your Telegram channel or chat via a Telegram Bot, with optional proxy support.
