@@ -69,10 +69,24 @@ class VPNMonitorApp:
         self.btn_toggle.pack(fill="x", pady=5)
 
     def is_openvpn_connected(self):
+        """
+        بررسی وضعیت کارت شبکه OpenVPN (TAP / TUN / Wintun) در ویندوز
+        """
         try:
-            output = subprocess.check_output("tasklist", shell=True).decode('utf-8', errors='ignore')
-            if "openvpn.exe" in output.lower() or "openvpn-gui.exe" in output.lower():
-                return True
+            # اجرا دستور netsh برای بررسی وضعیت آداپتورهای شبکه
+            output = subprocess.check_output(
+                ["netsh", "interface", "show", "interface"],
+                creationflags=subprocess.CREATE_NO_WINDOW
+            ).decode('utf-8', errors='ignore')
+
+            # بررسی خط به خط آداپتورها
+            for line in output.splitlines():
+                line_lower = line.lower()
+                # کارت شبکه‌های مربوط به OpenVPN معمولا TAP، TUN یا OpenVPN نام دارند
+                if any(k in line_lower for k in ["Local Area Connection"]):
+                    # چک کردن اینکه وضعیت کارت شبکه Connected است یا خیر
+                    if "Connected" in line_lower and "Disconnected" not in line_lower:
+                        return True
             return False
         except Exception:
             return False
@@ -117,12 +131,12 @@ class VPNMonitorApp:
             connected = self.is_openvpn_connected()
 
             if connected:
-                self.lbl_status.config(text="وضعیت: OpenVPN متصل است", foreground="green")
+                self.lbl_status.config(text="وضعیت: کارت شبکه OpenVPN متصل است", foreground="green")
                 was_connected = True
             else:
-                self.lbl_status.config(text="وضعیت: OpenVPN قطع شده است!", foreground="red")
+                self.lbl_status.config(text="وضعیت: کارت شبکه OpenVPN قطع شد!", foreground="red")
                 if was_connected:
-                    self.send_telegram_alert("⚠️ هشدار: اتصال OpenVPN سیستم شما قطع شد!")
+                    self.send_telegram_alert("⚠️ هشدار: اتصال شبکه OpenVPN سیستم شما قطع شد!")
                     was_connected = False
 
             for _ in range(interval):
