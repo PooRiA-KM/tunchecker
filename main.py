@@ -10,12 +10,16 @@ class VPNMonitorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VPN Monitor & Telegram Notifier")
-        self.root.geometry("450x520")
+        self.root.geometry("460x540")
         self.root.resizable(False, False)
 
         # متغیرهای وضعیت
         self.is_running = False
         self.monitor_thread = None
+
+        # متغیرهای نمایش/مخفی‌سازی پسورد
+        self.show_token = False
+        self.show_chat_id = False
 
         self.setup_ui()
         self.refresh_adapters()
@@ -65,12 +69,20 @@ class VPNMonitorApp:
         frame_telegram.pack(fill="x", padx=10, pady=5)
 
         ttk.Label(frame_telegram, text="توکن ربات (Bot Token):").grid(row=0, column=0, sticky="w", pady=2)
-        self.entry_bot_token = ttk.Entry(frame_telegram, width=25)
-        self.entry_bot_token.grid(row=0, column=1, padx=5, pady=2)
+        # افزودن show="*" برای مخفی‌سازی توکن
+        self.entry_bot_token = ttk.Entry(frame_telegram, width=23, show="*")
+        self.entry_bot_token.grid(row=0, column=1, padx=2, pady=2)
+
+        #self.btn_toggle_token = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_token_visibility)
+        #self.btn_toggle_token.grid(row=0, column=2, padx=2)
 
         ttk.Label(frame_telegram, text="چت آیدی (Chat ID):").grid(row=1, column=0, sticky="w", pady=2)
-        self.entry_chat_id = ttk.Entry(frame_telegram, width=25)
-        self.entry_chat_id.grid(row=1, column=1, padx=5, pady=2)
+        # افزودن show="*" برای مخفی‌سازی چت آیدی
+        self.entry_chat_id = ttk.Entry(frame_telegram, width=23, show="*")
+        self.entry_chat_id.grid(row=1, column=1, padx=2, pady=2)
+
+        #self.btn_toggle_chat_id = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_chat_id_visibility)
+        #self.btn_toggle_chat_id.grid(row=1, column=2, padx=2)
 
         # وضعیت و دکمه‌ها
         frame_actions = ttk.Frame(self.root, padding=10)
@@ -82,6 +94,24 @@ class VPNMonitorApp:
 
         self.btn_toggle = ttk.Button(frame_actions, text="شروع مانیتورینگ", command=self.toggle_monitoring)
         self.btn_toggle.pack(fill="x", pady=5)
+
+    def toggle_token_visibility(self):
+        """نمایش یا مخفی کردن توکن ربات"""
+        if self.show_token:
+            self.entry_bot_token.config(show="*")
+            self.show_token = False
+        else:
+            self.entry_bot_token.config(show="")
+            self.show_token = True
+
+    def toggle_chat_id_visibility(self):
+        """نمایش یا مخفی کردن چت آیدی"""
+        if self.show_chat_id:
+            self.entry_chat_id.config(show="*")
+            self.show_chat_id = False
+        else:
+            self.entry_chat_id.config(show="")
+            self.show_chat_id = True
 
     def get_network_adapters(self):
         """
@@ -224,6 +254,8 @@ class VPNMonitorApp:
         self.entry_proxy_port.config(state=state)
         self.entry_bot_token.config(state=state)
         self.entry_chat_id.config(state=state)
+        self.btn_toggle_token.config(state=state)
+        self.btn_toggle_chat_id.config(state=state)
 
 
 if __name__ == "__main__":
