@@ -10,7 +10,7 @@ class VPNMonitorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VPN Monitor & Telegram Notifier")
-        self.root.geometry("460x540")
+        self.root.geometry("460x580")
         self.root.resizable(False, False)
 
         # متغیرهای وضعیت
@@ -89,6 +89,10 @@ class VPNMonitorApp:
 
         self.btn_toggle_chat_id = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_chat_id_visibility)
         self.btn_toggle_chat_id.grid(row=1, column=2, padx=2)
+
+        # دکمه تست تلگرام
+        self.btn_test_telegram = ttk.Button(frame_telegram, text="Test Bot Connection", command=self.test_telegram)
+        self.btn_test_telegram.grid(row=2, column=0, columnspan=3, sticky="we", pady=(8, 2))
 
         # وضعیت و دکمه‌ها
         frame_actions = ttk.Frame(self.root, padding=10)
@@ -186,7 +190,7 @@ class VPNMonitorApp:
         chat_id = self.entry_chat_id.get().strip()
 
         if not token or not chat_id:
-            return
+            return False
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {"chat_id": chat_id, "text": message}
@@ -203,9 +207,30 @@ class VPNMonitorApp:
             }
 
         try:
-            requests.post(url, data=payload, proxies=proxies, timeout=10)
+            response = requests.post(url, data=payload, proxies=proxies, timeout=10)
+            return response.status_code == 200
         except Exception as e:
             print(f"خطا در ارسال پیام تلگرام: {e}")
+            return False
+
+    def test_telegram(self):
+        """تست ارسال پیام به تلگرام در ترد مجزا"""
+        token = self.entry_bot_token.get().strip()
+        chat_id = self.entry_chat_id.get().strip()
+
+        if not token or not chat_id:
+            self.lbl_status.config(text="Error: Token and Chat ID required!", foreground="red")
+            return
+
+        def run_test():
+            self.lbl_status.config(text="Status: Testing Telegram...", foreground="blue")
+            success = self.send_telegram_alert("🔔 Test message from VPN Monitor!")
+            if success:
+                self.lbl_status.config(text="Status: Test message sent!", foreground="green")
+            else:
+                self.lbl_status.config(text="Error: Failed to send test message", foreground="red")
+
+        threading.Thread(target=run_test, daemon=True).start()
 
     def monitor_loop(self):
         was_connected = True
@@ -262,10 +287,10 @@ class VPNMonitorApp:
         self.entry_chat_id.config(state=state)
         self.btn_toggle_token.config(state=state)
         self.btn_toggle_chat_id.config(state=state)
+        self.btn_test_telegram.config(state=state)
 
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = VPNMonitorApp(root)
     root.mainloop()
-    
