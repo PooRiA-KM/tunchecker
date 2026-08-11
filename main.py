@@ -6,6 +6,7 @@ from tkinter import ttk
 import requests
 import json
 import os
+from datetime import datetime
 
 CONFIG_FILE = "config.json"
 
@@ -14,7 +15,7 @@ class VPNMonitorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VPN Monitor & Telegram Notifier")
-        self.root.geometry("460x580")
+        self.root.geometry("460x760")
         self.root.resizable(False, False)
 
         # متغیرهای وضعیت
@@ -28,6 +29,8 @@ class VPNMonitorApp:
         self.setup_ui()
         self.refresh_adapters()
         self.load_settings()
+
+        self.log("Application initialized successfully.")
 
         # ذخیره تنظیمات هنگام بستن برنامه
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -104,14 +107,35 @@ class VPNMonitorApp:
 
         # وضعیت و دکمه‌ها
         frame_actions = ttk.Frame(self.root, padding=10)
-        frame_actions.pack(fill="x", padx=10, pady=5)
+        frame_actions.pack(fill="x", padx=10, pady=2)
 
         self.lbl_status = ttk.Label(frame_actions, text="Status: Inactive", font=("Comic Sans MS", 11, "bold"),
                                     foreground="gray")
-        self.lbl_status.pack(pady=5)
+        self.lbl_status.pack(pady=2)
 
         self.btn_toggle = ttk.Button(frame_actions, text="Start Monitoring", command=self.toggle_monitoring)
-        self.btn_toggle.pack(fill="x", pady=5)
+        self.btn_toggle.pack(fill="x", pady=2)
+
+        # فریم نمایش لاگ‌ها
+        frame_logs = ttk.LabelFrame(self.root, text=" Event Logs ", padding=10)
+        frame_logs.pack(fill="both", expand=True, padx=10, pady=5)
+
+        self.txt_logs = tk.Text(frame_logs, height=8, font=("Comic Sans MS", 8), state="disabled", wrap="word")
+        scrollbar_y = ttk.Scrollbar(frame_logs, orient="vertical", command=self.txt_logs.yview)
+        self.txt_logs.configure(yscrollcommand=scrollbar_y.set)
+
+        scrollbar_y.pack(side="right", fill="y")
+        self.txt_logs.pack(side="left", fill="both", expand=True)
+
+    def log(self, message):
+        """ثبت لاگ با تاریخ و ساعت دقیق در باکس لاگ‌ها"""
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        formatted_message = f"[{now}] {message}\n"
+
+        self.txt_logs.config(state="normal")
+        self.txt_logs.insert(tk.END, formatted_message)
+        self.txt_logs.see(tk.END)
+        self.txt_logs.config(state="disabled")
 
     def load_settings(self):
         """بارگذاری تنظیمات از فایل JSON"""
@@ -144,8 +168,11 @@ class VPNMonitorApp:
             if "chat_id" in data:
                 self.entry_chat_id.delete(0, tk.END)
                 self.entry_chat_id.insert(0, data["chat_id"])
+
+            self.log("Settings loaded from config.json.")
         except Exception as e:
             print(f"خطا در بارگذاری تنظیمات: {e}")
+            self.log(f"Error loading settings: {e}")
 
     def save_settings(self):
         """ذخیره تنظیمات در فایل JSON"""
@@ -161,12 +188,15 @@ class VPNMonitorApp:
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
+            self.log("Settings saved to config.json.")
         except Exception as e:
             print(f"خطا در ذخیره تنظیمات: {e}")
+            self.log(f"Error saving settings: {e}")
 
     def on_closing(self):
         """هنگام بستن پنجره تنظیمات ذخیره می‌شوند"""
         self.save_settings()
+        self.log("Application closing.")
         self.root.destroy()
 
     def toggle_token_visibility(self):
@@ -208,6 +238,7 @@ class VPNMonitorApp:
                     adapters.append(adapter_name)
         except Exception as e:
             print(f"خطا در دریافت کارت‌های شبکه: {e}")
+            self.log(f"Error fetching network adapters: {e}")
         return adapters
 
     def refresh_adapters(self):
@@ -224,6 +255,7 @@ class VPNMonitorApp:
                     default_index = idx
                     break
             self.combo_adapters.current(default_index)
+        self.log("Network adapters list refreshed.")
 
     def is_openvpn_connected(self):
         """
@@ -254,6 +286,7 @@ class VPNMonitorApp:
         chat_id = self.entry_chat_id.get().strip()
 
         if not token or not chat_id:
+            self.log("Telegram alert skipped: Token or Chat ID is missing.")
             return False
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -272,9 +305,15 @@ class VPNMonitorApp:
 
         try:
             response = requests.post(url, data=payload, proxies=proxies, timeout=10)
-            return response.status_code == 200
+            if response.status_code == 200:
+                self.log("Telegram alert sent successfully.")
+                return True
+            else:
+                self.log(f"Failed to send Telegram alert. HTTP Status: {response.status_code}")
+                return False
         except Exception as e:
             print(f"خطا در ارسال پیام تلگرام: {e}")
+            self.log(f"Error sending Telegram alert: {e}")
             return False
 
     def test_telegram(self):
@@ -284,10 +323,12 @@ class VPNMonitorApp:
 
         if not token or not chat_id:
             self.lbl_status.config(text="Error: Token and Chat ID required!", foreground="red")
+            self.log("Test failed: Token or Chat ID missing.")
             return
 
         def run_test():
             self.lbl_status.config(text="Status: Testing Telegram...", foreground="blue")
+            self.log("Testing Telegram connection...")
             success = self.send_telegram_alert("🔔 Test message from VPN Monitor!")
             if success:
                 self.lbl_status.config(text="Status: Test message sent!", foreground="green")
@@ -312,10 +353,13 @@ class VPNMonitorApp:
 
             if connected:
                 self.lbl_status.config(text=f"Status: {selected_adapter} Connected", foreground="green")
+                if not was_connected:
+                    self.log(f"Adapter state changed: {selected_adapter} is now Connected.")
                 was_connected = True
             else:
                 self.lbl_status.config(text=f"Status: {selected_adapter} Disconnected!", foreground="red")
                 if was_connected:
+                    self.log(f"WARNING: Network adapter ({selected_adapter}) disconnected!")
                     self.send_telegram_alert(f"⚠️ Warning: Network adapter ({selected_adapter}) disconnected!")
                     was_connected = False
 
@@ -328,12 +372,16 @@ class VPNMonitorApp:
         if not self.is_running:
             if not self.combo_adapters.get():
                 self.lbl_status.config(text="Error: No network adapter selected", foreground="red")
+                self.log("Cannot start monitoring: No network adapter selected.")
                 return
 
-            self.save_settings()  # ذخیره تنظیمات هنگام شروع مانیتورینگ
+            self.save_settings()
             self.is_running = True
             self.btn_toggle.config(text="Stop Monitoring")
             self.toggle_inputs(state="disabled")
+
+            selected_adapter = self.combo_adapters.get()
+            self.log(f"Monitoring started for adapter: {selected_adapter}")
 
             self.monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
             self.monitor_thread.start()
@@ -342,6 +390,7 @@ class VPNMonitorApp:
             self.btn_toggle.config(text="Start Monitoring")
             self.lbl_status.config(text="Status: Inactive", foreground="gray")
             self.toggle_inputs(state="normal")
+            self.log("Monitoring stopped.")
 
     def toggle_inputs(self, state):
         self.combo_adapters.config(state="disabled" if state == "disabled" else "readonly")
