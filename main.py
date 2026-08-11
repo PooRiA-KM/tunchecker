@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 
 CONFIG_FILE = "config.json"
+LOG_FILE = "app_logs.txt"
 
 
 class VPNMonitorApp:
@@ -128,14 +129,22 @@ class VPNMonitorApp:
         self.txt_logs.pack(side="left", fill="both", expand=True)
 
     def log(self, message):
-        """ثبت لاگ با تاریخ و ساعت دقیق در باکس لاگ‌ها"""
+        """ثبت همزمان لاگ با تاریخ و ساعت در باکس برنامه و فایل متنی"""
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         formatted_message = f"[{now}] {message}\n"
 
+        # نمایش در باکس لاگ برنامه
         self.txt_logs.config(state="normal")
         self.txt_logs.insert(tk.END, formatted_message)
         self.txt_logs.see(tk.END)
         self.txt_logs.config(state="disabled")
+
+        # ذخیره همزمان در فایل تکست کنار برنامه
+        try:
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(formatted_message)
+        except Exception as e:
+            print(f"خطا در نوشتن لاگ روی فایل: {e}")
 
     def load_settings(self):
         """بارگذاری تنظیمات از فایل JSON"""
