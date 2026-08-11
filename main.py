@@ -25,18 +25,24 @@ class VPNMonitorApp:
         self.refresh_adapters()
 
     def setup_ui(self):
+        # تنظیم فونت Comic Sans MS برای تمام کامپوننت‌های ttk
         style = ttk.Style()
-        style.configure("TLabel", font=("Tahoma", 9))
-        style.configure("TButton", font=("Tahoma", 9))
+        style.configure("TLabel", font=("Comic Sans MS", 10))
+        style.configure("TButton", font=("Comic Sans MS", 10))
+        style.configure("TLabelframe.Label", font=("Comic Sans MS", 10, "bold"))
+
+        # تنظیم فونت برای منوی کشویی و فیلدهای متنی استاندارد تکینتر
+        self.root.option_add("*TCombobox*Listbox.font", ("Comic Sans MS", 10))
+        font_entry = ("Comic Sans MS", 10)
 
         # فریم انتخاب کارت شبکه
         frame_adapter = ttk.LabelFrame(self.root, text=" Network Adapter Selection ", padding=10)
         frame_adapter.pack(fill="x", padx=10, pady=5)
 
-        ttk.Label(frame_adapter, text="Network Adapter:").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Label(frame_adapter, text="Adapter:").grid(row=0, column=0, sticky="w", pady=5)
 
         # منوی کشویی برای لیست آداپتورها
-        self.combo_adapters = ttk.Combobox(frame_adapter, state="readonly", width=28)
+        self.combo_adapters = ttk.Combobox(frame_adapter, state="readonly", width=28, font=font_entry)
         self.combo_adapters.grid(row=0, column=1, padx=5, pady=5)
 
         # دکمه بروزرسانی لیست آداپتورها
@@ -48,7 +54,7 @@ class VPNMonitorApp:
         frame_interval.pack(fill="x", padx=10, pady=5)
 
         ttk.Label(frame_interval, text="Check Interval (sec):").grid(row=0, column=0, sticky="w", pady=5)
-        self.entry_interval = ttk.Entry(frame_interval, width=10)
+        self.entry_interval = ttk.Entry(frame_interval, width=10, font=font_entry)
         self.entry_interval.insert(0, "10")
         self.entry_interval.grid(row=0, column=1, sticky="e", padx=5)
 
@@ -57,11 +63,11 @@ class VPNMonitorApp:
         frame_proxy.pack(fill="x", padx=10, pady=5)
 
         ttk.Label(frame_proxy, text="IP Address:").grid(row=0, column=0, sticky="w", pady=2)
-        self.entry_proxy_ip = ttk.Entry(frame_proxy, width=20)
+        self.entry_proxy_ip = ttk.Entry(frame_proxy, width=20, font=font_entry)
         self.entry_proxy_ip.grid(row=0, column=1, padx=5, pady=2)
 
         ttk.Label(frame_proxy, text="Port:").grid(row=1, column=0, sticky="w", pady=2)
-        self.entry_proxy_port = ttk.Entry(frame_proxy, width=20)
+        self.entry_proxy_port = ttk.Entry(frame_proxy, width=20, font=font_entry)
         self.entry_proxy_port.grid(row=1, column=1, padx=5, pady=2)
 
         # فریم تلگرام
@@ -70,7 +76,7 @@ class VPNMonitorApp:
 
         ttk.Label(frame_telegram, text="Bot Token:").grid(row=0, column=0, sticky="w", pady=2)
         # افزودن show="*" برای مخفی‌سازی توکن
-        self.entry_bot_token = ttk.Entry(frame_telegram, width=23, show="*")
+        self.entry_bot_token = ttk.Entry(frame_telegram, width=23, show="*", font=font_entry)
         self.entry_bot_token.grid(row=0, column=1, padx=2, pady=2)
 
         self.btn_toggle_token = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_token_visibility)
@@ -78,7 +84,7 @@ class VPNMonitorApp:
 
         ttk.Label(frame_telegram, text="Chat ID:").grid(row=1, column=0, sticky="w", pady=2)
         # افزودن show="*" برای مخفی‌سازی چت آیدی
-        self.entry_chat_id = ttk.Entry(frame_telegram, width=23, show="*")
+        self.entry_chat_id = ttk.Entry(frame_telegram, width=23, show="*", font=font_entry)
         self.entry_chat_id.grid(row=1, column=1, padx=2, pady=2)
 
         self.btn_toggle_chat_id = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_chat_id_visibility)
@@ -88,7 +94,7 @@ class VPNMonitorApp:
         frame_actions = ttk.Frame(self.root, padding=10)
         frame_actions.pack(fill="x", padx=10, pady=5)
 
-        self.lbl_status = ttk.Label(frame_actions, text="Status: Inactive", font=("Tahoma", 10, "bold"),
+        self.lbl_status = ttk.Label(frame_actions, text="Status: Inactive", font=("Comic Sans MS", 11, "bold"),
                                     foreground="gray")
         self.lbl_status.pack(pady=5)
 
@@ -262,3 +268,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = VPNMonitorApp(root)
     root.mainloop()
+    
