@@ -8,6 +8,11 @@ import json
 import os
 from datetime import datetime
 
+# کتابخانه‌های جدید برای مدیریت System Tray
+import pystray
+from pystray import MenuItem as item
+from PIL import Image, ImageDraw
+
 CONFIG_FILE = "config.json"
 LOG_FILE = "app_logs.txt"
 
@@ -22,6 +27,7 @@ class VPNMonitorApp:
         # متغیرهای وضعیت
         self.is_running = False
         self.monitor_thread = None
+        self.tray_icon = None
 
         # متغیرهای نمایش/مخفی‌سازی پسورد
         self.show_token = False
@@ -33,8 +39,11 @@ class VPNMonitorApp:
 
         self.log("Application initialized successfully.")
 
-        # ذخیره تنظیمات هنگام بستن برنامه
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        # تغییر رفتار دکمه ضربدر پنجره به پنهان شدن در Tray
+        self.root.protocol("WM_DELETE_WINDOW", self.hide_to_tray)
+
+        # راه‌اندازی آیکون تری در یک ترد مجزا
+        self.setup_tray()
 
     def setup_ui(self):
         # تنظیم فونت Comic Sans MS برای تمام کامپوننت‌های ttk
@@ -134,10 +143,13 @@ class VPNMonitorApp:
         formatted_message = f"[{now}] {message}\n"
 
         # نمایش در باکس لاگ برنامه
-        self.txt_logs.config(state="normal")
-        self.txt_logs.insert(tk.END, formatted_message)
-        self.txt_logs.see(tk.END)
-        self.txt_logs.config(state="disabled")
+        try:
+            self.txt_logs.config(state="normal")
+            self.txt_logs.insert(tk.END, formatted_message)
+            self.txt_logs.see(tk.END)
+            self.txt_logs.config(state="disabled")
+        except Exception:
+            pass
 
         # ذخیره همزمان در فایل تکست کنار برنامه
         try:
@@ -145,6 +157,49 @@ class VPNMonitorApp:
                 f.write(formatted_message)
         except Exception as e:
             print(f"خطا در نوشتن لاگ روی فایل: {e}")
+
+    def create_tray_image(self):
+        """ساخت یک آیکون ساده داینامیک برای تری سیستم"""
+        image = Image.new('RGBA', (24, 24), (0, 0, 0, 0))
+        dc = ImageDraw.Draw(image)
+        dc.rectangle([2, 2, 22, 22], fill="#1f232a", outline="#4f5b66", width=2)
+        dc.ellipse([6, 6, 18, 18], fill="#007acc")
+        return image
+
+    def setup_tray(self):
+        """راه‌اندازی سیستم تری"""
+        menu = (
+            item('Show Window', self.show_window, default=True),
+            item('Exit Application', self.exit_application)
+        )
+        self.tray_icon = pystray.Icon("VPNMonitor", self.create_tray_image(), "VPN Monitor", menu)
+
+        # اجرای آیکون تری در ترد بک‌گراند تا اصلی فریز نشود
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def hide_to_tray(self):
+        """پنهان کردن پنجره اصلی و انتقال به تری"""
+        self.root.withdraw()
+        self.log("Application minimized to system tray.")
+
+    def show_window(self):
+        """نمایش مجدد پنجره اصلی"""
+        self.root.deiconify()
+        self.root.lift()
+        self.log("Application window restored.")
+
+    def exit_application(self):
+        """خروج کامل و نهایی از برنامه از طریق مکرر منوی تری"""
+        self.is_running = False
+        self.save_settings()
+        self.log("Application shutting down completely via Tray.")
+
+        # بستن آیکون تری
+        if self.tray_icon:
+            self.tray_icon.stop()
+
+        # بستن نهایی پنجره تکینتر
+        self.root.after(0, self.root.destroy)
 
     def load_settings(self):
         """بارگذاری تنظیمات از فایل JSON"""
@@ -202,12 +257,6 @@ class VPNMonitorApp:
             print(f"خطا در ذخیره تنظیمات: {e}")
             self.log(f"Error saving settings: {e}")
 
-    def on_closing(self):
-        """هنگام بستن پنجره تنظیمات ذخیره می‌شوند"""
-        self.save_settings()
-        self.log("Application closing.")
-        self.root.destroy()
-
     def toggle_token_visibility(self):
         """نمایش یا مخفی کردن توکن ربات"""
         if self.show_token:
@@ -240,8 +289,6 @@ class VPNMonitorApp:
             lines = output.splitlines()
             for line in lines:
                 parts = line.split()
-                # خروجی netsh شامل Admin State, State, Type, Interface Name است
-                # نام کارت شبکه معمولا بخش آخر سطر است
                 if len(parts) >= 4 and parts[0] in ["Enabled", "Disabled"]:
                     adapter_name = " ".join(parts[3:])
                     adapters.append(adapter_name)
@@ -257,7 +304,6 @@ class VPNMonitorApp:
         adapters = self.get_network_adapters()
         self.combo_adapters['values'] = adapters
         if adapters:
-            # سعی می‌کند پیش‌فرض کارت شبکه‌ای که کلمه TAP یا OpenVPN دارد را انتخاب کند
             default_index = 0
             for idx, name in enumerate(adapters):
                 if any(k in name.lower() for k in ["tap", "openvpn", "wintun", "tun"]):
@@ -283,7 +329,6 @@ class VPNMonitorApp:
             for line in output.splitlines():
                 if selected_adapter in line:
                     line_lower = line.lower()
-                    # بررسی اتصال بر اساس کلیدواژه Connected
                     if "connected" in line_lower and "disconnected" not in line_lower:
                         return True
             return False
