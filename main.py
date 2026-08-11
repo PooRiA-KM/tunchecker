@@ -4,6 +4,10 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 import requests
+import json
+import os
+
+CONFIG_FILE = "config.json"
 
 
 class VPNMonitorApp:
@@ -23,6 +27,10 @@ class VPNMonitorApp:
 
         self.setup_ui()
         self.refresh_adapters()
+        self.load_settings()
+
+        # ذخیره تنظیمات هنگام بستن برنامه
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_ui(self):
         # تنظیم فونت Comic Sans MS برای تمام کامپوننت‌های ttk
@@ -104,6 +112,62 @@ class VPNMonitorApp:
 
         self.btn_toggle = ttk.Button(frame_actions, text="Start Monitoring", command=self.toggle_monitoring)
         self.btn_toggle.pack(fill="x", pady=5)
+
+    def load_settings(self):
+        """بارگذاری تنظیمات از فایل JSON"""
+        if not os.path.exists(CONFIG_FILE):
+            return
+
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if "adapter" in data and data["adapter"] in self.combo_adapters['values']:
+                self.combo_adapters.set(data["adapter"])
+
+            if "interval" in data:
+                self.entry_interval.delete(0, tk.END)
+                self.entry_interval.insert(0, str(data["interval"]))
+
+            if "proxy_ip" in data:
+                self.entry_proxy_ip.delete(0, tk.END)
+                self.entry_proxy_ip.insert(0, data["proxy_ip"])
+
+            if "proxy_port" in data:
+                self.entry_proxy_port.delete(0, tk.END)
+                self.entry_proxy_port.insert(0, data["proxy_port"])
+
+            if "bot_token" in data:
+                self.entry_bot_token.delete(0, tk.END)
+                self.entry_bot_token.insert(0, data["bot_token"])
+
+            if "chat_id" in data:
+                self.entry_chat_id.delete(0, tk.END)
+                self.entry_chat_id.insert(0, data["chat_id"])
+        except Exception as e:
+            print(f"خطا در بارگذاری تنظیمات: {e}")
+
+    def save_settings(self):
+        """ذخیره تنظیمات در فایل JSON"""
+        data = {
+            "adapter": self.combo_adapters.get(),
+            "interval": self.entry_interval.get().strip(),
+            "proxy_ip": self.entry_proxy_ip.get().strip(),
+            "proxy_port": self.entry_proxy_port.get().strip(),
+            "bot_token": self.entry_bot_token.get().strip(),
+            "chat_id": self.entry_chat_id.get().strip(),
+        }
+
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"خطا در ذخیره تنظیمات: {e}")
+
+    def on_closing(self):
+        """هنگام بستن پنجره تنظیمات ذخیره می‌شوند"""
+        self.save_settings()
+        self.root.destroy()
 
     def toggle_token_visibility(self):
         """نمایش یا مخفی کردن توکن ربات"""
@@ -266,6 +330,7 @@ class VPNMonitorApp:
                 self.lbl_status.config(text="Error: No network adapter selected", foreground="red")
                 return
 
+            self.save_settings()  # ذخیره تنظیمات هنگام شروع مانیتورینگ
             self.is_running = True
             self.btn_toggle.config(text="Stop Monitoring")
             self.toggle_inputs(state="disabled")
