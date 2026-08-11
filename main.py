@@ -30,10 +30,10 @@ class VPNMonitorApp:
         style.configure("TButton", font=("Tahoma", 9))
 
         # فریم انتخاب کارت شبکه
-        frame_adapter = ttk.LabelFrame(self.root, text=" انتخاب کارت شبکه ", padding=10)
+        frame_adapter = ttk.LabelFrame(self.root, text=" Network Adapter Selection ", padding=10)
         frame_adapter.pack(fill="x", padx=10, pady=5)
 
-        ttk.Label(frame_adapter, text="کارت شبکه:").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Label(frame_adapter, text="Network Adapter:").grid(row=0, column=0, sticky="w", pady=5)
 
         # منوی کشویی برای لیست آداپتورها
         self.combo_adapters = ttk.Combobox(frame_adapter, state="readonly", width=28)
@@ -44,55 +44,55 @@ class VPNMonitorApp:
         btn_refresh.grid(row=0, column=2, padx=2)
 
         # فریم تنظیمات زمان‌بندی
-        frame_interval = ttk.LabelFrame(self.root, text=" تنظیمات زمان‌بندی ", padding=10)
+        frame_interval = ttk.LabelFrame(self.root, text=" Interval Settings ", padding=10)
         frame_interval.pack(fill="x", padx=10, pady=5)
 
-        ttk.Label(frame_interval, text="فاصله بررسی (ثانیه):").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Label(frame_interval, text="Check Interval (sec):").grid(row=0, column=0, sticky="w", pady=5)
         self.entry_interval = ttk.Entry(frame_interval, width=10)
         self.entry_interval.insert(0, "10")
         self.entry_interval.grid(row=0, column=1, sticky="e", padx=5)
 
         # فریم پروکسی
-        frame_proxy = ttk.LabelFrame(self.root, text=" تنظیمات پروکسی تلگرام (اختیاری) ", padding=10)
+        frame_proxy = ttk.LabelFrame(self.root, text=" Telegram Proxy Settings (Optional) ", padding=10)
         frame_proxy.pack(fill="x", padx=10, pady=5)
 
-        ttk.Label(frame_proxy, text="آدرس آی‌پی (IP):").grid(row=0, column=0, sticky="w", pady=2)
+        ttk.Label(frame_proxy, text="IP Address:").grid(row=0, column=0, sticky="w", pady=2)
         self.entry_proxy_ip = ttk.Entry(frame_proxy, width=20)
         self.entry_proxy_ip.grid(row=0, column=1, padx=5, pady=2)
 
-        ttk.Label(frame_proxy, text="پورت (Port):").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(frame_proxy, text="Port:").grid(row=1, column=0, sticky="w", pady=2)
         self.entry_proxy_port = ttk.Entry(frame_proxy, width=20)
         self.entry_proxy_port.grid(row=1, column=1, padx=5, pady=2)
 
         # فریم تلگرام
-        frame_telegram = ttk.LabelFrame(self.root, text=" تنظیمات ربات تلگرام ", padding=10)
+        frame_telegram = ttk.LabelFrame(self.root, text=" Telegram Bot Settings ", padding=10)
         frame_telegram.pack(fill="x", padx=10, pady=5)
 
-        ttk.Label(frame_telegram, text="توکن ربات (Bot Token):").grid(row=0, column=0, sticky="w", pady=2)
+        ttk.Label(frame_telegram, text="Bot Token:").grid(row=0, column=0, sticky="w", pady=2)
         # افزودن show="*" برای مخفی‌سازی توکن
         self.entry_bot_token = ttk.Entry(frame_telegram, width=23, show="*")
         self.entry_bot_token.grid(row=0, column=1, padx=2, pady=2)
 
-        #self.btn_toggle_token = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_token_visibility)
-        #self.btn_toggle_token.grid(row=0, column=2, padx=2)
+        self.btn_toggle_token = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_token_visibility)
+        self.btn_toggle_token.grid(row=0, column=2, padx=2)
 
-        ttk.Label(frame_telegram, text="چت آیدی (Chat ID):").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(frame_telegram, text="Chat ID:").grid(row=1, column=0, sticky="w", pady=2)
         # افزودن show="*" برای مخفی‌سازی چت آیدی
         self.entry_chat_id = ttk.Entry(frame_telegram, width=23, show="*")
         self.entry_chat_id.grid(row=1, column=1, padx=2, pady=2)
 
-        #self.btn_toggle_chat_id = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_chat_id_visibility)
-        #self.btn_toggle_chat_id.grid(row=1, column=2, padx=2)
+        self.btn_toggle_chat_id = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_chat_id_visibility)
+        self.btn_toggle_chat_id.grid(row=1, column=2, padx=2)
 
         # وضعیت و دکمه‌ها
         frame_actions = ttk.Frame(self.root, padding=10)
         frame_actions.pack(fill="x", padx=10, pady=5)
 
-        self.lbl_status = ttk.Label(frame_actions, text="وضعیت: غیرفعال", font=("Tahoma", 10, "bold"),
+        self.lbl_status = ttk.Label(frame_actions, text="Status: Inactive", font=("Tahoma", 10, "bold"),
                                     foreground="gray")
         self.lbl_status.pack(pady=5)
 
-        self.btn_toggle = ttk.Button(frame_actions, text="شروع مانیتورینگ", command=self.toggle_monitoring)
+        self.btn_toggle = ttk.Button(frame_actions, text="Start Monitoring", command=self.toggle_monitoring)
         self.btn_toggle.pack(fill="x", pady=5)
 
     def toggle_token_visibility(self):
@@ -216,12 +216,12 @@ class VPNMonitorApp:
             selected_adapter = self.combo_adapters.get()
 
             if connected:
-                self.lbl_status.config(text=f"وضعیت: {selected_adapter} متصل است", foreground="green")
+                self.lbl_status.config(text=f"Status: {selected_adapter} Connected", foreground="green")
                 was_connected = True
             else:
-                self.lbl_status.config(text=f"وضعیت: {selected_adapter} قطع شد!", foreground="red")
+                self.lbl_status.config(text=f"Status: {selected_adapter} Disconnected!", foreground="red")
                 if was_connected:
-                    self.send_telegram_alert(f"⚠️ هشدار: اتصال کارت شبکه ({selected_adapter}) قطع شد!")
+                    self.send_telegram_alert(f"⚠️ Warning: Network adapter ({selected_adapter}) disconnected!")
                     was_connected = False
 
             for _ in range(interval):
@@ -232,19 +232,19 @@ class VPNMonitorApp:
     def toggle_monitoring(self):
         if not self.is_running:
             if not self.combo_adapters.get():
-                self.lbl_status.config(text="خطا: هیچ کارت شبکه‌ای انتخاب نشده است", foreground="red")
+                self.lbl_status.config(text="Error: No network adapter selected", foreground="red")
                 return
 
             self.is_running = True
-            self.btn_toggle.config(text="توقف مانیتورینگ")
+            self.btn_toggle.config(text="Stop Monitoring")
             self.toggle_inputs(state="disabled")
 
             self.monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
             self.monitor_thread.start()
         else:
             self.is_running = False
-            self.btn_toggle.config(text="شروع مانیتورینگ")
-            self.lbl_status.config(text="وضعیت: غیرفعال", foreground="gray")
+            self.btn_toggle.config(text="Start Monitoring")
+            self.lbl_status.config(text="Status: Inactive", foreground="gray")
             self.toggle_inputs(state="normal")
 
     def toggle_inputs(self, state):
@@ -254,8 +254,8 @@ class VPNMonitorApp:
         self.entry_proxy_port.config(state=state)
         self.entry_bot_token.config(state=state)
         self.entry_chat_id.config(state=state)
-        #self.btn_toggle_token.config(state=state)
-        #self.btn_toggle_chat_id.config(state=state)
+        self.btn_toggle_token.config(state=state)
+        self.btn_toggle_chat_id.config(state=state)
 
 
 if __name__ == "__main__":
