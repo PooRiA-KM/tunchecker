@@ -7,11 +7,10 @@ import requests
 import json
 import os
 from datetime import datetime
-
-# کتابخانه‌های جدید برای مدیریت System Tray
 import pystray
 from pystray import MenuItem as item
 from PIL import Image, ImageDraw
+import psutil
 
 CONFIG_FILE = "config.json"
 LOG_FILE = "app_logs.txt"
@@ -277,21 +276,13 @@ class VPNMonitorApp:
 
     def get_network_adapters(self):
         """
-        دریافت نام تمام کارت‌های شبکه سیستم‌عامل
+        دریافت نام تمام کارت‌های شبکه سیستم‌عامل با استفاده از psutil (بهینه‌تر و سریع‌تر)
         """
         adapters = []
         try:
-            output = subprocess.check_output(
-                ["netsh", "interface", "show", "interface"],
-                creationflags=subprocess.CREATE_NO_WINDOW
-            ).decode('utf-8', errors='ignore')
-
-            lines = output.splitlines()
-            for line in lines:
-                parts = line.split()
-                if len(parts) >= 4 and parts[0] in ["Enabled", "Disabled"]:
-                    adapter_name = " ".join(parts[3:])
-                    adapters.append(adapter_name)
+            # دریافت مستقیم وضعیت تمام اینترفیس‌ها بدون نیاز به اجرای دستور خارجی
+            stats = psutil.net_if_stats()
+            adapters = list(stats.keys())
         except Exception as e:
             print(f"خطا در دریافت کارت‌های شبکه: {e}")
             self.log(f"Error fetching network adapters: {e}")
@@ -314,23 +305,16 @@ class VPNMonitorApp:
 
     def is_openvpn_connected(self):
         """
-        بررسی وضعیت کارت شبکه انتخاب‌شده در منوی کشویی
+        بررسی وضعیت کارت شبکه انتخاب‌شده با استفاده از psutil (بدون نیاز به subprocess)
         """
         selected_adapter = self.combo_adapters.get()
         if not selected_adapter:
             return False
-
         try:
-            output = subprocess.check_output(
-                ["netsh", "interface", "show", "interface"],
-                creationflags=subprocess.CREATE_NO_WINDOW
-            ).decode('utf-8', errors='ignore')
-
-            for line in output.splitlines():
-                if selected_adapter in line:
-                    line_lower = line.lower()
-                    if "connected" in line_lower and "disconnected" not in line_lower:
-                        return True
+            stats = psutil.net_if_stats()
+            # بررسی اینکه آیا آداپتور انتخاب شده در لیست وجود داره و وضعیتش UP هست یا نه
+            if selected_adapter in stats:
+                return stats[selected_adapter].isup
             return False
         except Exception:
             return False
