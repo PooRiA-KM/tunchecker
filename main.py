@@ -27,6 +27,8 @@ class VPNMonitorApp:
 
         # متغیرهای وضعیت
         self.is_running = False
+        self.last_local_ip_status = True
+        self.last_public_ip_status = True
         self.monitor_thread = None
         self.tray_icon = None
 
@@ -422,7 +424,11 @@ class VPNMonitorApp:
             return False
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {"chat_id": chat_id, "text": message}
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
 
         proxies = None
         proxy_ip = self.entry_proxy_ip.get().strip()
@@ -558,11 +564,11 @@ class VPNMonitorApp:
             self.entry_public_ip.config(state="normal")
 
     def get_adapter_ipv4(self, adapter_name):
-        """دریافت آدرس IPv4 کارت شبکه انتخاب شده"""
+        """دریافت آدرس IPv4 کارت شبکه انتخاب شده با استفاده از psutil"""
         try:
             addrs = psutil.net_if_addrs().get(adapter_name, [])
             for addr in addrs:
-                if addr.family == socket.AF_INET:  # فقط آدرس‌های IPv4
+                if addr.family == socket.AF_INET:
                     return addr.address
             return None
         except Exception:
@@ -582,7 +588,6 @@ class VPNMonitorApp:
     def get_public_ip(self):
         """دریافت IP پابلیک فعلی از طریق api.ipify.org"""
         try:
-            # تایم‌اوت کوتاه برای جلوگیری از هنگ کردن ترد در صورت قطعی اینترنت
             response = requests.get("https://api.ipify.org", timeout=5)
             if response.status_code == 200:
                 return response.text.strip()
@@ -591,42 +596,71 @@ class VPNMonitorApp:
             return None
 
     def update_verification_status(self):
-        """بروزرسانی وضعیت تیک‌های سبز/قرمز بر اساس تنظیمات کاربر"""
+        """بروزرسانی وضعیت تیک‌ها و ارسال نوتیفیکیشن تلگرام در صورت Fail شدن هر چک"""
         selected_adapter = self.combo_adapters.get()
         current_local_ip = self.get_adapter_ipv4(selected_adapter)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 1. بروزرسانی لیبل IP لوکال فعلی
+        # --- 1. بررسی رنج Local CIDR ---
+        expected_cidr = self.entry_local_cidr.get().strip()
+        is_valid_local = True  # پیش‌فرض موفق است مگر اینکه کاربر مقداری وارد کرده باشد
+
+        if expected_cidr:
+            if current_local_ip and not current_local_ip.startswith("169.254"):
+                is_valid_local = self.is_ip_in_cidr(current_local_ip, expected_cidr)
+            else:
+                is_valid_local = False  # کاربر رنج را تعیین کرده اما IP معتبری وجود ندارد
+
+        # اگر وضعیت تغییر کرد و Fail شد، نوتیفیکیشن کامل بفرست
+        if is_valid_local != self.last_local_ip_status:
+            if not is_valid_local:
+                msg = (f"⚠️ *VPN Monitor Alert: Local IP Check Failed!*\n\n"
+                       f"🔹 Adapter: `{selected_adapter}`\n"
+                       f"🔹 Current Local IP: `{current_local_ip or 'Not Found (or APIPA)'}`\n"
+                       f"🔹 Expected CIDR: `{expected_cidr}`\n"
+                       f"🕒 Time: `{now}`")
+                self.log(f"WARNING: Local IP check failed! IP: {current_local_ip}, Expected: {expected_cidr}")
+                self.send_telegram_alert(msg)
+            self.last_local_ip_status = is_valid_local
+
+        # آپدیت UI برای Local IP
         if current_local_ip:
             is_apipa = current_local_ip.startswith("169.254")
-            ip_color = "red" if is_apipa else "green"
-            ip_text = f"Current Local IP: {current_local_ip} {'(APIPA/No IP)' if is_apipa else ''}"
+            ip_color = "red" if is_apipa or not is_valid_local else "green"
+            ip_text = f"Current Local IP: {current_local_ip} {'(APIPA)' if is_apipa else ''}"
         else:
             ip_color = "red"
             ip_text = "Current Local IP: Not Found"
 
         self.root.after(0, lambda: self.lbl_current_local_ip.config(text=ip_text, foreground=ip_color))
+        self.root.after(0, lambda valid=is_valid_local: self.lbl_local_status.config(
+            text="✅" if valid else "❌", foreground="green" if valid else "red"
+        ))
 
-        # 2. بررسی رنج Local CIDR
-        expected_cidr = self.entry_local_cidr.get().strip()
-        if expected_cidr and current_local_ip and not current_local_ip.startswith("169.254"):
-            is_valid_local = self.is_ip_in_cidr(current_local_ip, expected_cidr)
-            self.root.after(0, lambda valid=is_valid_local: self.lbl_local_status.config(
-                text="✅" if valid else "❌", foreground="green" if valid else "red"
-            ))
-        else:
-            self.root.after(0, lambda: self.lbl_local_status.config(text="⚪", foreground="gray"))
-
-        # 3. بررسی Public IP
+        # --- 2. بررسی Public IP ---
         expected_public = self.entry_public_ip.get().strip()
+        is_valid_public = True  # پیش‌فرض موفق است مگر اینکه کاربر مقداری وارد کرده باشد
+
         if expected_public:
             current_public = self.get_public_ip()
             is_valid_public = (current_public == expected_public)
-            self.root.after(0, lambda valid=is_valid_public: self.lbl_public_status.config(
-                text="✅" if valid else "❌", foreground="green" if valid else "red"
-            ))
-        else:
-            self.root.after(0, lambda: self.lbl_public_status.config(text="⚪", foreground="gray"))
 
+            # اگر وضعیت تغییر کرد و Fail شد، نوتیفیکیشن کامل بفرست
+            if is_valid_public != self.last_public_ip_status:
+                if not is_valid_public:
+                    msg = (f"⚠️ *VPN Monitor Alert: Public IP Check Failed!*\n\n"
+                           f"🔹 Adapter: `{selected_adapter}`\n"
+                           f"🔹 Current Public IP: `{current_public or 'Not Found'}`\n"
+                           f"🔹 Expected Public IP: `{expected_public}`\n"
+                           f"🕒 Time: `{now}`")
+                    self.log(f"WARNING: Public IP check failed! Current: {current_public}, Expected: {expected_public}")
+                    self.send_telegram_alert(msg)
+                self.last_public_ip_status = is_valid_public
+
+        # آپدیت UI برای Public IP
+        self.root.after(0, lambda valid=is_valid_public: self.lbl_public_status.config(
+            text="✅" if valid else "❌", foreground="green" if valid else "red"
+        ))
 
 if __name__ == "__main__":
     root = tk.Tk()
