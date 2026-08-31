@@ -350,17 +350,29 @@ class VPNMonitorApp:
                 return False  # اگر تیک خورده ولی آیپی خالیه، اتصال رو رد می‌کنیم
 
             try:
-                # اجرای دستور پینگ ویندوز (1 پکت، تایم اوت 1000 میلی ثانیه)
-                # stdout و stderr به DEVNULL می‌روند تا در لاگ‌های سیستم نویز ایجاد نکنند
+                # اجرای دستور پینگ و دریافت خروجی استاندارد (stdout) به جای DEVNULL
                 result = subprocess.run(
                     ["ping", "-n", "1", "-w", "1000", target_ip],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     creationflags=subprocess.CREATE_NO_WINDOW
                 )
-                # اگر کد خروج 0 نباشد، یعنی پینگ fail شده است
+
+                # اگر کد خروج غیر از 0 باشد (مثل Request timed out)، یعنی قطعی است
                 if result.returncode != 0:
                     return False
+
+                # اگر کد خروج 0 باشد، باید خروجی متن را چک کنیم.
+                # چون ویندوز گاهی برای خطاهایی مثل TTL expired هم کد 0 (موفقیت) برمی‌گرداند!
+                output_text = result.stdout.decode('utf-8', errors='ignore').lower()
+
+                # بررسی کلمات کلیدی خطا (هم انگلیسی و هم فارسی برای اطمینان کامل در هر زبانی)
+                error_keywords = [
+                    "ttl expired", "unreachable", "failed",
+                ]
+                if any(keyword in output_text for keyword in error_keywords):
+                    return False
+
             except Exception:
                 return False
 
