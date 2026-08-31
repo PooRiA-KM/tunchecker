@@ -29,6 +29,7 @@ class VPNMonitorApp:
         self.is_running = False
         self.last_local_ip_status = True
         self.last_public_ip_status = True
+        self.last_overall_status = None
         self.monitor_thread = None
         self.tray_icon = None
 
@@ -366,59 +367,22 @@ class VPNMonitorApp:
 
     def is_openvpn_connected(self):
         """
-        بررسی وضعیت کارت شبکه و در صورت فعال بودن، بررسی اتصال واقعی با پینگ
+        بررسی وضعیت کارت شبکه انتخاب‌شده با استفاده از psutil (بدون پینگ)
         """
         selected_adapter = self.combo_adapters.get()
         if not selected_adapter:
             return False
-
-        # 1. بررسی وضعیت آداپتور با psutil (سریع و بدون سربار)
         try:
             stats = psutil.net_if_stats()
-            if selected_adapter not in stats or not stats[selected_adapter].isup:
-                return False
+            if selected_adapter in stats:
+                return stats[selected_adapter].isup
+            return False
         except Exception:
             return False
-
-        # 2. بررسی پینگ (فقط در صورتی که کاربر تیک آن را فعال کرده باشد)
-        if self.ping_enabled.get():
-            target_ip = self.entry_ping_ip.get().strip()
-            if not target_ip:
-                return False  # اگر تیک خورده ولی آیپی خالیه، اتصال رو رد می‌کنیم
-
-            try:
-                # اجرای دستور پینگ و دریافت خروجی استاندارد (stdout) به جای DEVNULL
-                result = subprocess.run(
-                    ["ping", "-n", "1", "-w", "1000", target_ip],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-
-                # اگر کد خروج غیر از 0 باشد (مثل Request timed out)، یعنی قطعی است
-                if result.returncode != 0:
-                    return False
-
-                # اگر کد خروج 0 باشد، باید خروجی متن را چک کنیم.
-                # چون ویندوز گاهی برای خطاهایی مثل TTL expired هم کد 0 (موفقیت) برمی‌گرداند!
-                output_text = result.stdout.decode('utf-8', errors='ignore').lower()
-
-                # بررسی کلمات کلیدی خطا (هم انگلیسی و هم فارسی برای اطمینان کامل در هر زبانی)
-                error_keywords = [
-                    "ttl expired", "unreachable", "failed",
-                ]
-                if any(keyword in output_text for keyword in error_keywords):
-                    return False
-
-            except Exception:
-                return False
-
-        return True
 
     def send_telegram_alert(self, message):
         token = self.entry_bot_token.get().strip()
         chat_id = self.entry_chat_id.get().strip()
-
         if not token or not chat_id:
             self.log("Telegram alert skipped: Token or Chat ID is missing.")
             return False
@@ -427,19 +391,15 @@ class VPNMonitorApp:
         payload = {
             "chat_id": chat_id,
             "text": message,
-            "parse_mode": "Markdown"
+            "parse_mode": "HTML"  # تغییر از Markdown به HTML برای جلوگیری از خطای کاراکترها
         }
 
         proxies = None
         proxy_ip = self.entry_proxy_ip.get().strip()
         proxy_port = self.entry_proxy_port.get().strip()
-
         if proxy_ip and proxy_port:
             proxy_url = f"http://{proxy_ip}:{proxy_port}"
-            proxies = {
-                "http": proxy_url,
-                "https": proxy_url
-            }
+            proxies = {"http": proxy_url, "https": proxy_url}
 
         try:
             response = requests.post(url, data=payload, proxies=proxies, timeout=10)
@@ -447,7 +407,8 @@ class VPNMonitorApp:
                 self.log("Telegram alert sent successfully.")
                 return True
             else:
-                self.log(f"Failed to send Telegram alert. HTTP Status: {response.status_code}")
+                # >>> لاگ دقیق خطا برای عیب‌یابی <<<
+                self.log(f"Failed to send Telegram alert. HTTP {response.status_code}: {response.text}")
                 return False
         except Exception as e:
             print(f"خطا در ارسال پیام تلگرام: {e}")
@@ -479,39 +440,81 @@ class VPNMonitorApp:
 
     def monitor_loop(self):
         was_connected = True
+        # >>> اصلاح منطق: شروع با وضعیت فعلی برای ارسال پیام در صورت قطع بودن از ابتدا <<<
+        initial_status = self.get_full_status_report()
+        self.last_overall_status = initial_status["overall_ok"]
+
+        # اگر از همان ابتدا وضعیت بحرانی بود، یک بار پیام بفرست
+        if not self.last_overall_status:
+            self.send_comprehensive_alert("Initial Check Failed (Already in Critical State)")
+
         while self.is_running:
             try:
-                interval = int(self.entry_interval.get().strip())
-                if interval < 1:
-                    interval = 5
-            except ValueError:
-                interval = 10
+                try:
+                    interval = int(self.entry_interval.get().strip())
+                    if interval < 1:
+                        interval = 5
+                except ValueError:
+                    interval = 10
 
-            connected = self.is_openvpn_connected()
+                # دریافت گزارش کامل وضعیت
+                status = self.get_full_status_report()
+                connected = status["vpn_connected"]
+                selected_adapter = status["adapter"]
 
-            # >>> افزودن جدید: بررسی وضعیت پیشرفته در هر اینتروال <<<
-            self.update_verification_status()
+                # آپدیت UI
+                self.update_verification_status(status)
 
-            selected_adapter = self.combo_adapters.get()
-
-            if connected:
-                self.root.after(0, lambda adapter=selected_adapter: self.lbl_status.config(
-                    text=f"Status: {adapter} Connected", foreground="green"))
-                if not was_connected:
-                    self.log(f"Adapter state changed: {selected_adapter} is now Connected.")
-                was_connected = True
-            else:
-                self.root.after(0, lambda adapter=selected_adapter: self.lbl_status.config(
-                    text=f"Status: {adapter} Disconnected!", foreground="red"))
-                if was_connected:
-                    self.log(f"WARNING: Network adapter ({selected_adapter}) disconnected!")
-                    self.send_telegram_alert(f"⚠️ Warning: Network adapter ({selected_adapter}) disconnected!")
+                # آپدیت لیبل وضعیت اصلی
+                if connected:
+                    self.root.after(0, lambda adapter=selected_adapter: self.lbl_status.config(
+                        text=f"Status: {adapter} Connected", foreground="green"))
+                    if not was_connected:
+                        self.log(f"Adapter state changed: {selected_adapter} is now Connected.")
+                    was_connected = True
+                else:
+                    self.root.after(0, lambda adapter=selected_adapter: self.lbl_status.config(
+                        text=f"Status: {adapter} Disconnected!", foreground="red"))
+                    if was_connected:
+                        self.log(f"WARNING: Network adapter ({selected_adapter}) disconnected!")
                     was_connected = False
 
-            for _ in range(interval):
-                if not self.is_running:
-                    break
-                time.sleep(1)
+                # >>> بررسی وضعیت کلی و ارسال پیام در صورت تغییر به حالت بحرانی <<<
+                current_overall = status["overall_ok"]
+
+                # حالت 1: وضعیت از OK به FAIL تغییر کرد
+                if not current_overall and self.last_overall_status:
+                    reasons = []
+                    if not status["vpn_connected"]:
+                        reasons.append("OpenVPN Disconnected")
+                    if not status["ping_ok"]:
+                        reasons.append("Ping Failed")
+                    if not status["local_ok"]:
+                        reasons.append("Local IP Mismatch")
+                    if not status["public_ok"]:
+                        reasons.append("Public IP Mismatch")
+
+                    trigger = " | ".join(reasons) if reasons else "Unknown Issue"
+                    self.send_comprehensive_alert(trigger)
+
+                # حالت 2: وضعیت از FAIL به OK تغییر کرد (پیام بازیابی)
+                elif current_overall and not self.last_overall_status:
+                    self.send_comprehensive_alert("✅ System Recovered - All Checks Passed")
+
+                self.last_overall_status = current_overall
+
+                # انتظار برای اینتروال بعدی
+                for _ in range(interval):
+                    if not self.is_running:
+                        break
+                    time.sleep(1)
+
+            except Exception as e:
+                # >>> حیاتی: جلوگیری از توقف حلقه در صورت خطای غیرمنتظره <<<
+                self.log(f"CRITICAL ERROR in monitor loop: {e}")
+                import traceback
+                traceback.print_exc()
+                time.sleep(5)
 
     def toggle_monitoring(self):
         if not self.is_running:
@@ -595,72 +598,111 @@ class VPNMonitorApp:
         except Exception:
             return None
 
-    def update_verification_status(self):
-        """بروزرسانی وضعیت تیک‌ها و ارسال نوتیفیکیشن تلگرام در صورت Fail شدن هر چک"""
+    def update_verification_status(self, status):
+        """بروزرسانی وضعیت تیک‌ها بر اساس گزارش وضعیت"""
+        # آپدیت Local IP
+        current_local_ip = status["local_status"].replace("✅ ", "").replace("❌ ", "")
+        is_apipa = "APIPA" in current_local_ip or current_local_ip.startswith("169.254")
+        ip_color = "red" if is_apipa or not status["local_ok"] else "green"
+
+        self.root.after(0, lambda: self.lbl_current_local_ip.config(
+            text=f"Current Local IP: {current_local_ip}",
+            foreground=ip_color
+        ))
+        self.root.after(0, lambda ok=status["local_ok"]: self.lbl_local_status.config(
+            text="✅" if ok else "❌",
+            foreground="green" if ok else "red"
+        ))
+
+        # آپدیت Public IP
+        self.root.after(0, lambda ok=status["public_ok"]: self.lbl_public_status.config(
+            text="✅" if ok else "❌",
+            foreground="green" if ok else "red"
+        ))
+
+    def get_full_status_report(self):
+        """دریافت گزارش کامل وضعیت تمام چک‌ها در یک پاس (بهینه‌شده)"""
         selected_adapter = self.combo_adapters.get()
+
+        # 1. وضعیت OpenVPN
+        vpn_connected = self.is_openvpn_connected()
+
+        # 2. وضعیت پینگ
+        ping_ok = True
+        if self.ping_enabled.get():
+            target_ip = self.entry_ping_ip.get().strip()
+            if target_ip and vpn_connected:
+                try:
+                    result = subprocess.run(
+                        ["ping", "-n", "1", "-w", "1000", target_ip],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    if result.returncode != 0:
+                        ping_ok = False
+                    else:
+                        output_text = result.stdout.decode('utf-8', errors='ignore').lower()
+                        error_keywords = ["ttl expired", "unreachable", "failed", "منقضی شد", "غیرقابل دسترسی",
+                                          "پایان رسید"]
+                        if any(keyword in output_text for keyword in error_keywords):
+                            ping_ok = False
+                except Exception:
+                    ping_ok = False
+
+        # 3. وضعیت Local IP
         current_local_ip = self.get_adapter_ipv4(selected_adapter)
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # --- 1. بررسی رنج Local CIDR ---
         expected_cidr = self.entry_local_cidr.get().strip()
-        is_valid_local = True  # پیش‌فرض موفق است مگر اینکه کاربر مقداری وارد کرده باشد
-
+        local_ok = True
         if expected_cidr:
             if current_local_ip and not current_local_ip.startswith("169.254"):
-                is_valid_local = self.is_ip_in_cidr(current_local_ip, expected_cidr)
+                local_ok = self.is_ip_in_cidr(current_local_ip, expected_cidr)
             else:
-                is_valid_local = False  # کاربر رنج را تعیین کرده اما IP معتبری وجود ندارد
+                local_ok = False
 
-        # اگر وضعیت تغییر کرد و Fail شد، نوتیفیکیشن کامل بفرست
-        if is_valid_local != self.last_local_ip_status:
-            if not is_valid_local:
-                msg = (f"⚠️ *VPN Monitor Alert: Local IP Check Failed!*\n\n"
-                       f"🔹 Adapter: `{selected_adapter}`\n"
-                       f"🔹 Current Local IP: `{current_local_ip or 'Not Found (or APIPA)'}`\n"
-                       f"🔹 Expected CIDR: `{expected_cidr}`\n"
-                       f"🕒 Time: `{now}`")
-                self.log(f"WARNING: Local IP check failed! IP: {current_local_ip}, Expected: {expected_cidr}")
-                self.send_telegram_alert(msg)
-            self.last_local_ip_status = is_valid_local
-
-        # آپدیت UI برای Local IP
-        if current_local_ip:
-            is_apipa = current_local_ip.startswith("169.254")
-            ip_color = "red" if is_apipa or not is_valid_local else "green"
-            ip_text = f"Current Local IP: {current_local_ip} {'(APIPA)' if is_apipa else ''}"
-        else:
-            ip_color = "red"
-            ip_text = "Current Local IP: Not Found"
-
-        self.root.after(0, lambda: self.lbl_current_local_ip.config(text=ip_text, foreground=ip_color))
-        self.root.after(0, lambda valid=is_valid_local: self.lbl_local_status.config(
-            text="✅" if valid else "❌", foreground="green" if valid else "red"
-        ))
-
-        # --- 2. بررسی Public IP ---
+        # 4. وضعیت Public IP (>>> بهینه‌شده: فقط یک بار درخواست <<<)
         expected_public = self.entry_public_ip.get().strip()
-        is_valid_public = True  # پیش‌فرض موفق است مگر اینکه کاربر مقداری وارد کرده باشد
-
+        public_ok = True
+        current_public = None
         if expected_public:
             current_public = self.get_public_ip()
-            is_valid_public = (current_public == expected_public)
+            public_ok = (current_public == expected_public)
 
-            # اگر وضعیت تغییر کرد و Fail شد، نوتیفیکیشن کامل بفرست
-            if is_valid_public != self.last_public_ip_status:
-                if not is_valid_public:
-                    msg = (f"⚠️ *VPN Monitor Alert: Public IP Check Failed!*\n\n"
-                           f"🔹 Adapter: `{selected_adapter}`\n"
-                           f"🔹 Current Public IP: `{current_public or 'Not Found'}`\n"
-                           f"🔹 Expected Public IP: `{expected_public}`\n"
-                           f"🕒 Time: `{now}`")
-                    self.log(f"WARNING: Public IP check failed! Current: {current_public}, Expected: {expected_public}")
-                    self.send_telegram_alert(msg)
-                self.last_public_ip_status = is_valid_public
+        return {
+            "vpn_connected": vpn_connected,
+            "vpn_status": "✅ Connected" if vpn_connected else "❌ Disconnected",
+            "ping_ok": ping_ok,
+            "ping_status": "✅ Reachable" if ping_ok else "❌ Unreachable",
+            "local_ok": local_ok,
+            "local_status": f"✅ {current_local_ip or 'No IP'}" if local_ok else f"❌ {current_local_ip or 'No IP/APIPA'}",
+            "public_ok": public_ok,
+            "public_status": f"✅ {current_public or 'Unknown'}" if public_ok else f"❌ {current_public or 'Unknown'} (Expected: {expected_public})",
+            "adapter": selected_adapter,
+            "overall_ok": vpn_connected and ping_ok and local_ok and public_ok
+        }
 
-        # آپدیت UI برای Public IP
-        self.root.after(0, lambda valid=is_valid_public: self.lbl_public_status.config(
-            text="✅" if valid else "❌", foreground="green" if valid else "red"
-        ))
+    def send_comprehensive_alert(self, trigger_reason):
+        """ارسال پیام جامع وضعیت به تلگرام با فرمت HTML"""
+        status = self.get_full_status_report()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        overall_text = "🟢 <b>Overall Status: HEALTHY</b>" if status[
+            "overall_ok"] else "🔴 <b>Overall Status: CRITICAL</b>"
+
+        message = (
+            f"🚨 <b>VPN Monitor Alert</b>\n\n"
+            f"{overall_text}\n\n"
+            f"📊 <b>Detailed Checks:</b>\n"
+            f"🔹 OpenVPN Adapter: {status['vpn_status']}\n"
+            f"🔹 Ping: {status['ping_status']}\n"
+            f"🔹 Local IP: {status['local_status']}\n"
+            f"🔹 Public IP: {status['public_status']}\n\n"
+            f"⚠️ <b>Trigger:</b> {trigger_reason}\n"
+            f"🕒 <b>Time:</b> <code>{now}</code>"
+        )
+
+        self.log(f"Sending comprehensive alert. Trigger: {trigger_reason}")
+        self.send_telegram_alert(message)
 
 if __name__ == "__main__":
     root = tk.Tk()
