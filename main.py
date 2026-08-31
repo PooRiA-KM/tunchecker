@@ -11,6 +11,8 @@ import pystray
 from pystray import MenuItem as item
 from PIL import Image, ImageDraw
 import psutil
+import socket
+import ipaddress
 
 CONFIG_FILE = "config.json"
 LOG_FILE = "app_logs.txt"
@@ -77,6 +79,30 @@ class VPNMonitorApp:
         self.entry_interval = ttk.Entry(frame_interval, width=10, font=font_entry)
         self.entry_interval.insert(0, "10")
         self.entry_interval.grid(row=0, column=1, sticky="e", padx=5)
+
+        # فریم بررسی پیشرفته اتصال
+        frame_advanced = ttk.LabelFrame(self.root, text=" Advanced Connectivity Verification ", padding=10)
+        frame_advanced.pack(fill="x", padx=10, pady=5)
+
+        # رنج IP لوکال
+        ttk.Label(frame_advanced, text="Expected Local CIDR:").grid(row=0, column=0, sticky="w", pady=2)
+        self.entry_local_cidr = ttk.Entry(frame_advanced, width=20, font=font_entry)
+        self.entry_local_cidr.insert(0, "192.168.0.0/16")  # مقدار پیش‌فرض
+        self.entry_local_cidr.grid(row=0, column=1, padx=5, pady=2)
+        self.lbl_local_status = ttk.Label(frame_advanced, text="⚪", font=("Segoe UI Emoji", 14))
+        self.lbl_local_status.grid(row=0, column=2, padx=5)
+
+        # نمایش IP لوکال فعلی
+        self.lbl_current_local_ip = ttk.Label(frame_advanced, text="Current Local IP: Not checked", foreground="gray",
+                                              font=("Comic Sans MS", 9))
+        self.lbl_current_local_ip.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 5))
+
+        # IP پابلیک سرور
+        ttk.Label(frame_advanced, text="Expected Public IP:").grid(row=2, column=0, sticky="w", pady=2)
+        self.entry_public_ip = ttk.Entry(frame_advanced, width=20, font=font_entry)
+        self.entry_public_ip.grid(row=2, column=1, padx=5, pady=2)
+        self.lbl_public_status = ttk.Label(frame_advanced, text="⚪", font=("Segoe UI Emoji", 14))
+        self.lbl_public_status.grid(row=2, column=2, padx=5)
 
         # فریم بررسی اتصال واقعی (پینگ)
         frame_ping = ttk.LabelFrame(self.root, text=" Connectivity Check (Optional Ping) ", padding=10)
@@ -254,6 +280,13 @@ class VPNMonitorApp:
                 self.entry_ping_ip.delete(0, tk.END)
                 self.entry_ping_ip.insert(0, data["ping_ip"])
 
+            if "local_cidr" in data:
+                self.entry_local_cidr.delete(0, tk.END)
+                self.entry_local_cidr.insert(0, data["local_cidr"])
+            if "public_ip" in data:
+                self.entry_public_ip.delete(0, tk.END)
+                self.entry_public_ip.insert(0, data["public_ip"])
+
             self.log("Settings loaded from config.json.")
         except Exception as e:
             print(f"خطا در بارگذاری تنظیمات: {e}")
@@ -269,7 +302,9 @@ class VPNMonitorApp:
             "bot_token": self.entry_bot_token.get().strip(),
             "chat_id": self.entry_chat_id.get().strip(),
             "ping_enabled": self.ping_enabled.get(),
-            "ping_ip": self.entry_ping_ip.get().strip()
+            "ping_ip": self.entry_ping_ip.get().strip(),
+            "local_cidr": self.entry_local_cidr.get().strip(),
+            "public_ip": self.entry_public_ip.get().strip()
         }
 
         try:
@@ -447,17 +482,19 @@ class VPNMonitorApp:
                 interval = 10
 
             connected = self.is_openvpn_connected()
+
+            # >>> افزودن جدید: بررسی وضعیت پیشرفته در هر اینتروال <<<
+            self.update_verification_status()
+
             selected_adapter = self.combo_adapters.get()
 
             if connected:
-                # آپدیت امن UI
                 self.root.after(0, lambda adapter=selected_adapter: self.lbl_status.config(
                     text=f"Status: {adapter} Connected", foreground="green"))
                 if not was_connected:
                     self.log(f"Adapter state changed: {selected_adapter} is now Connected.")
                 was_connected = True
             else:
-                # آپدیت امن UI
                 self.root.after(0, lambda adapter=selected_adapter: self.lbl_status.config(
                     text=f"Status: {adapter} Disconnected!", foreground="red"))
                 if was_connected:
@@ -511,6 +548,84 @@ class VPNMonitorApp:
         else:
             self.chk_ping.config(state="normal")
             self.entry_ping_ip.config(state="normal")
+
+        # مدیریت وضعیت فیلدهای پیشرفته
+        if state == "disabled":
+            self.entry_local_cidr.config(state="disabled")
+            self.entry_public_ip.config(state="disabled")
+        else:
+            self.entry_local_cidr.config(state="normal")
+            self.entry_public_ip.config(state="normal")
+
+    def get_adapter_ipv4(self, adapter_name):
+        """دریافت آدرس IPv4 کارت شبکه انتخاب شده"""
+        try:
+            addrs = psutil.net_if_addrs().get(adapter_name, [])
+            for addr in addrs:
+                if addr.family == socket.AF_INET:  # فقط آدرس‌های IPv4
+                    return addr.address
+            return None
+        except Exception:
+            return None
+
+    def is_ip_in_cidr(self, ip_str, cidr_str):
+        """بررسی اینکه آیا یک IP در رنج CIDR مشخص قرار دارد یا خیر"""
+        try:
+            if not ip_str or not cidr_str:
+                return False
+            ip = ipaddress.IPv4Address(ip_str)
+            network = ipaddress.IPv4Network(cidr_str, strict=False)
+            return ip in network
+        except Exception:
+            return False
+
+    def get_public_ip(self):
+        """دریافت IP پابلیک فعلی از طریق api.ipify.org"""
+        try:
+            # تایم‌اوت کوتاه برای جلوگیری از هنگ کردن ترد در صورت قطعی اینترنت
+            response = requests.get("https://api.ipify.org", timeout=5)
+            if response.status_code == 200:
+                return response.text.strip()
+            return None
+        except Exception:
+            return None
+
+    def update_verification_status(self):
+        """بروزرسانی وضعیت تیک‌های سبز/قرمز بر اساس تنظیمات کاربر"""
+        selected_adapter = self.combo_adapters.get()
+        current_local_ip = self.get_adapter_ipv4(selected_adapter)
+
+        # 1. بروزرسانی لیبل IP لوکال فعلی
+        if current_local_ip:
+            is_apipa = current_local_ip.startswith("169.254")
+            ip_color = "red" if is_apipa else "green"
+            ip_text = f"Current Local IP: {current_local_ip} {'(APIPA/No IP)' if is_apipa else ''}"
+        else:
+            ip_color = "red"
+            ip_text = "Current Local IP: Not Found"
+
+        self.root.after(0, lambda: self.lbl_current_local_ip.config(text=ip_text, foreground=ip_color))
+
+        # 2. بررسی رنج Local CIDR
+        expected_cidr = self.entry_local_cidr.get().strip()
+        if expected_cidr and current_local_ip and not current_local_ip.startswith("169.254"):
+            is_valid_local = self.is_ip_in_cidr(current_local_ip, expected_cidr)
+            self.root.after(0, lambda valid=is_valid_local: self.lbl_local_status.config(
+                text="✅" if valid else "❌", foreground="green" if valid else "red"
+            ))
+        else:
+            self.root.after(0, lambda: self.lbl_local_status.config(text="⚪", foreground="gray"))
+
+        # 3. بررسی Public IP
+        expected_public = self.entry_public_ip.get().strip()
+        if expected_public:
+            current_public = self.get_public_ip()
+            is_valid_public = (current_public == expected_public)
+            self.root.after(0, lambda valid=is_valid_public: self.lbl_public_status.config(
+                text="✅" if valid else "❌", foreground="green" if valid else "red"
+            ))
+        else:
+            self.root.after(0, lambda: self.lbl_public_status.config(text="⚪", foreground="gray"))
 
 
 if __name__ == "__main__":
