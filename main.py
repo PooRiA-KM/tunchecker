@@ -78,6 +78,18 @@ class VPNMonitorApp:
         self.entry_interval.insert(0, "10")
         self.entry_interval.grid(row=0, column=1, sticky="e", padx=5)
 
+        # فریم بررسی اتصال واقعی (پینگ)
+        frame_ping = ttk.LabelFrame(self.root, text=" Connectivity Check (Optional Ping) ", padding=10)
+        frame_ping.pack(fill="x", padx=10, pady=5)
+
+        self.ping_enabled = tk.BooleanVar(value=False)
+        self.chk_ping = ttk.Checkbutton(frame_ping, text="Enable Ping Check", variable=self.ping_enabled)
+        self.chk_ping.grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
+
+        ttk.Label(frame_ping, text="Target IP:").grid(row=1, column=0, sticky="w", pady=2)
+        self.entry_ping_ip = ttk.Entry(frame_ping, width=20, font=font_entry)
+        self.entry_ping_ip.grid(row=1, column=1, padx=5, pady=2)
+
         # فریم پروکسی
         frame_proxy = ttk.LabelFrame(self.root, text=" Telegram Proxy Settings (Optional) ", padding=10)
         frame_proxy.pack(fill="x", padx=10, pady=5)
@@ -236,6 +248,12 @@ class VPNMonitorApp:
                 self.entry_chat_id.delete(0, tk.END)
                 self.entry_chat_id.insert(0, data["chat_id"])
 
+            if "ping_enabled" in data:
+                self.ping_enabled.set(data["ping_enabled"])
+            if "ping_ip" in data:
+                self.entry_ping_ip.delete(0, tk.END)
+                self.entry_ping_ip.insert(0, data["ping_ip"])
+
             self.log("Settings loaded from config.json.")
         except Exception as e:
             print(f"خطا در بارگذاری تنظیمات: {e}")
@@ -250,6 +268,8 @@ class VPNMonitorApp:
             "proxy_port": self.entry_proxy_port.get().strip(),
             "bot_token": self.entry_bot_token.get().strip(),
             "chat_id": self.entry_chat_id.get().strip(),
+            "ping_enabled": self.ping_enabled.get(),
+            "ping_ip": self.entry_ping_ip.get().strip()
         }
 
         try:
@@ -309,19 +329,42 @@ class VPNMonitorApp:
 
     def is_openvpn_connected(self):
         """
-        بررسی وضعیت کارت شبکه انتخاب‌شده با استفاده از psutil (بدون نیاز به subprocess)
+        بررسی وضعیت کارت شبکه و در صورت فعال بودن، بررسی اتصال واقعی با پینگ
         """
         selected_adapter = self.combo_adapters.get()
         if not selected_adapter:
             return False
+
+        # 1. بررسی وضعیت آداپتور با psutil (سریع و بدون سربار)
         try:
             stats = psutil.net_if_stats()
-            # بررسی اینکه آیا آداپتور انتخاب شده در لیست وجود داره و وضعیتش UP هست یا نه
-            if selected_adapter in stats:
-                return stats[selected_adapter].isup
-            return False
+            if selected_adapter not in stats or not stats[selected_adapter].isup:
+                return False
         except Exception:
             return False
+
+        # 2. بررسی پینگ (فقط در صورتی که کاربر تیک آن را فعال کرده باشد)
+        if self.ping_enabled.get():
+            target_ip = self.entry_ping_ip.get().strip()
+            if not target_ip:
+                return False  # اگر تیک خورده ولی آیپی خالیه، اتصال رو رد می‌کنیم
+
+            try:
+                # اجرای دستور پینگ ویندوز (1 پکت، تایم اوت 1000 میلی ثانیه)
+                # stdout و stderr به DEVNULL می‌روند تا در لاگ‌های سیستم نویز ایجاد نکنند
+                result = subprocess.run(
+                    ["ping", "-n", "1", "-w", "1000", target_ip],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                # اگر کد خروج 0 نباشد، یعنی پینگ fail شده است
+                if result.returncode != 0:
+                    return False
+            except Exception:
+                return False
+
+        return True
 
     def send_telegram_alert(self, message):
         token = self.entry_bot_token.get().strip()
@@ -449,6 +492,13 @@ class VPNMonitorApp:
         self.btn_toggle_token.config(state=state)
         self.btn_toggle_chat_id.config(state=state)
         self.btn_test_telegram.config(state=state)
+        # مدیریت وضعیت چک‌باکس و فیلد پینگ
+        if state == "disabled":
+            self.chk_ping.config(state="disabled")
+            self.entry_ping_ip.config(state="disabled")
+        else:
+            self.chk_ping.config(state="normal")
+            self.entry_ping_ip.config(state="normal")
 
 
 if __name__ == "__main__":
