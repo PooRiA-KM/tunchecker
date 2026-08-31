@@ -141,16 +141,20 @@ class VPNMonitorApp:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         formatted_message = f"[{now}] {message}\n"
 
-        # نمایش در باکس لاگ برنامه
-        try:
-            self.txt_logs.config(state="normal")
-            self.txt_logs.insert(tk.END, formatted_message)
-            self.txt_logs.see(tk.END)
-            self.txt_logs.config(state="disabled")
-        except Exception:
-            pass
+        # تعریف یک تابع داخلی برای آپدیت کردن باکس متن
+        def _update_ui():
+            try:
+                self.txt_logs.config(state="normal")
+                self.txt_logs.insert(tk.END, formatted_message)
+                self.txt_logs.see(tk.END)
+                self.txt_logs.config(state="disabled")
+            except Exception:
+                pass
 
-        # ذخیره همزمان در فایل تکست کنار برنامه
+        # انتقال آپدیت UI به ترد اصلی (MainThread)
+        self.root.after(0, _update_ui)
+
+        # ذخیره همزمان در فایل تکست کنار برنامه (این بخش نیازی به ترد اصلی نداره)
         try:
             with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(formatted_message)
@@ -358,26 +362,27 @@ class VPNMonitorApp:
         """تست ارسال پیام به تلگرام در ترد مجزا"""
         token = self.entry_bot_token.get().strip()
         chat_id = self.entry_chat_id.get().strip()
-
         if not token or not chat_id:
             self.lbl_status.config(text="Error: Token and Chat ID required!", foreground="red")
             self.log("Test failed: Token or Chat ID missing.")
             return
 
         def run_test():
-            self.lbl_status.config(text="Status: Testing Telegram...", foreground="blue")
+            # آپدیت‌های امن UI
+            self.root.after(0, lambda: self.lbl_status.config(text="Status: Testing Telegram...", foreground="blue"))
             self.log("Testing Telegram connection...")
+
             success = self.send_telegram_alert("🔔 Test message from VPN Monitor!")
+
             if success:
-                self.lbl_status.config(text="Status: Test message sent!", foreground="green")
+                self.root.after(0, lambda: self.lbl_status.config(text="Status: Test message sent!", foreground="green"))
             else:
-                self.lbl_status.config(text="Error: Failed to send test message", foreground="red")
+                self.root.after(0, lambda: self.lbl_status.config(text="Error: Failed to send test message", foreground="red"))
 
         threading.Thread(target=run_test, daemon=True).start()
 
     def monitor_loop(self):
         was_connected = True
-
         while self.is_running:
             try:
                 interval = int(self.entry_interval.get().strip())
@@ -390,12 +395,16 @@ class VPNMonitorApp:
             selected_adapter = self.combo_adapters.get()
 
             if connected:
-                self.lbl_status.config(text=f"Status: {selected_adapter} Connected", foreground="green")
+                # آپدیت امن UI
+                self.root.after(0, lambda adapter=selected_adapter: self.lbl_status.config(
+                    text=f"Status: {adapter} Connected", foreground="green"))
                 if not was_connected:
                     self.log(f"Adapter state changed: {selected_adapter} is now Connected.")
                 was_connected = True
             else:
-                self.lbl_status.config(text=f"Status: {selected_adapter} Disconnected!", foreground="red")
+                # آپدیت امن UI
+                self.root.after(0, lambda adapter=selected_adapter: self.lbl_status.config(
+                    text=f"Status: {adapter} Disconnected!", foreground="red"))
                 if was_connected:
                     self.log(f"WARNING: Network adapter ({selected_adapter}) disconnected!")
                     self.send_telegram_alert(f"⚠️ Warning: Network adapter ({selected_adapter}) disconnected!")
