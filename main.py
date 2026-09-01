@@ -807,7 +807,7 @@ class VPNMonitorApp:
                     self.root.after(0, lambda a=selected_adapter: self.lbl_status.configure(
                         text=f"🟢 {a} Connected", text_color=COLORS["accent_green"]))
                     if not was_connected:
-                        self.log(f"Adapter {a} is now Connected.")
+                        self.log(f"Adapter {selected_adapter} is now Connected.")
                     was_connected = True
                 else:
                     self.root.after(0, lambda a=selected_adapter: self.lbl_status.configure(
