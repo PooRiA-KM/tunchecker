@@ -23,17 +23,17 @@ LOG_FILE = "app_logs.txt"
 
 # پالت رنگی تم دارک مدرن
 COLORS = {
-    "bg_primary": "#181824",  # پس‌زمینه اصلی
-    "bg_secondary": "#1e1e2e",  # پس‌زمینه ثانویه (کارت‌ها)
-    "bg_tertiary": "#252538",  # پس‌زمینه سوم (فیلدها)
-    "border": "#2f2f44",  # کادرها
-    "text_primary": "#e4e4e7",  # متن اصلی
-    "text_secondary": "#a1a1aa",  # متن ثانویه
-    "accent_blue": "#3b82f6",  # آبی نئونی
-    "accent_green": "#10b981",  # سبز زمردی
-    "accent_red": "#ef4444",  # قرمز ملایم
-    "accent_yellow": "#f59e0b",  # زرد هشدار
-    "accent_purple": "#8b5cf6",  # بنفش
+    "bg_primary": "#181824",       # پس‌زمینه اصلی
+    "bg_secondary": "#1e1e2e",     # پس‌زمینه ثانویه (کارت‌ها)
+    "bg_tertiary": "#252538",      # پس‌زمینه سوم (فیلدها)
+    "border": "#2f2f44",           # کادرها
+    "text_primary": "#e4e4e7",     # متن اصلی
+    "text_secondary": "#a1a1aa",   # متن ثانویه
+    "accent_blue": "#3b82f6",      # آبی نئونی
+    "accent_green": "#10b981",     # سبز زمردی
+    "accent_red": "#ef4444",       # قرمز ملایم
+    "accent_yellow": "#f59e0b",    # زرد هشدار
+    "accent_purple": "#8b5cf6",    # بنفش
 }
 
 # تنظیمات ظاهری CustomTkinter
@@ -46,7 +46,6 @@ ctk.set_default_color_theme("blue")
 # ============================================
 class CardFrame(ctk.CTkFrame):
     """یک کارت مدرن با عنوان و حاشیه"""
-
     def __init__(self, parent, title, **kwargs):
         super().__init__(parent, fg_color=COLORS["bg_secondary"],
                          corner_radius=12, border_width=1,
@@ -62,7 +61,6 @@ class CardFrame(ctk.CTkFrame):
 
 class StatusBadge(ctk.CTkFrame):
     """بج وضعیت با رنگ شاخص"""
-
     def __init__(self, parent, text="Inactive", color="gray", **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
         self.dot = ctk.CTkLabel(self, text="●", font=("Segoe UI", 14),
@@ -88,7 +86,7 @@ class StatusBadge(ctk.CTkFrame):
 class VPNMonitorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("VPN Monitor & Telegram Notifier")
+        self.root.title("TUN Checker")
         self.root.geometry("560x820")
         self.root.minsize(520, 780)
         self.root.configure(fg_color=COLORS["bg_primary"])
@@ -558,13 +556,13 @@ class VPNMonitorApp:
             item('Show Window', self.show_window, default=True),
             item('Exit Application', self.exit_application)
         )
-        self.tray_icon = pystray.Icon("VPNMonitor", self.create_tray_image(),
-                                      "VPN Monitor", menu)
+        self.tray_icon = pystray.Icon("TUNChecker", self.create_tray_image(),
+                                      "TUN Checker", menu)
         threading.Thread(target=self.tray_icon.run, daemon=True).start()
 
     def hide_to_tray(self):
         self.root.withdraw()
-        self.log("Application minimized to system tray.")
+        self.log("TUN Checker minimized to system tray.")
 
     def show_window(self, icon=None, item=None):
         self.root.after(0, self.root.deiconify)
