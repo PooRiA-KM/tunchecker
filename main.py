@@ -23,17 +23,17 @@ LOG_FILE = "app_logs.txt"
 
 # پالت رنگی تم دارک مدرن
 COLORS = {
-    "bg_primary": "#181824",       # پس‌زمینه اصلی
-    "bg_secondary": "#1e1e2e",     # پس‌زمینه ثانویه (کارت‌ها)
-    "bg_tertiary": "#252538",      # پس‌زمینه سوم (فیلدها)
-    "border": "#2f2f44",           # کادرها
-    "text_primary": "#e4e4e7",     # متن اصلی
-    "text_secondary": "#a1a1aa",   # متن ثانویه
-    "accent_blue": "#3b82f6",      # آبی نئونی
-    "accent_green": "#10b981",     # سبز زمردی
-    "accent_red": "#ef4444",       # قرمز ملایم
-    "accent_yellow": "#f59e0b",    # زرد هشدار
-    "accent_purple": "#8b5cf6",    # بنفش
+    "bg_primary": "#0d1117",       # مشکی خاکستری
+    "bg_secondary": "#161b22",     # خاکستری تیره
+    "bg_tertiary": "#21262d",      # خاکستری متوسط
+    "border": "#30363d",           # حاشیه
+    "text_primary": "#c9d1d9",     # متن روشن
+    "text_secondary": "#8b949e",   # متن خاکستری
+    "accent_blue": "#58a6ff",      # آبی ملایم
+    "accent_green": "#3fb950",     # سبز ملایم
+    "accent_red": "#f85149",       # قرمز ملایم
+    "accent_yellow": "#d29922",    # زرد ملایم
+    "accent_purple": "#bc8cff",    # بنفش ملایم
 }
 
 # تنظیمات ظاهری CustomTkinter
@@ -53,20 +53,20 @@ class CardFrame(ctk.CTkFrame):
 
         # عنوان کارت
         self.title_label = ctk.CTkLabel(
-            self, text=title, font=("Segoe UI", 12, "bold"),
+            self, text=title, font=("Segoe UI", 14, "bold"),
             text_color=COLORS["accent_blue"]
         )
-        self.title_label.pack(anchor="w", padx=15, pady=(12, 6))
+        self.title_label.pack(anchor="w", padx=12, pady=(10, 4))
 
 
 class StatusBadge(ctk.CTkFrame):
     """بج وضعیت با رنگ شاخص"""
     def __init__(self, parent, text="Inactive", color="gray", **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
-        self.dot = ctk.CTkLabel(self, text="●", font=("Segoe UI", 14),
+        self.dot = ctk.CTkLabel(self, text="●", font=("Segoe UI", 16),
                                 text_color=color)
         self.dot.pack(side="left", padx=(0, 6))
-        self.label = ctk.CTkLabel(self, text=text, font=("Segoe UI", 11, "bold"),
+        self.label = ctk.CTkLabel(self, text=text, font=("Segoe UI", 13, "bold"),
                                   text_color=color)
         self.label.pack(side="left")
         self.current_color = color
@@ -119,9 +119,9 @@ class VPNMonitorApp:
     # راه‌اندازی UI
     # ============================================
     def setup_ui(self):
-        # فونت پیش‌فرض
-        default_font = ("Segoe UI", 11)
-        small_font = ("Segoe UI", 10)
+        # فونت‌های بزرگ‌تر
+        default_font = ("Segoe UI", 13)
+        small_font = ("Segoe UI", 12)
 
         # ایجاد سیستم تب‌بندی
         self.tabview = ctk.CTkTabview(
@@ -133,7 +133,7 @@ class VPNMonitorApp:
             segmented_button_unselected_hover_color=COLORS["bg_tertiary"],
             corner_radius=12
         )
-        self.tabview.pack(fill="both", expand=True, padx=15, pady=15)
+        self.tabview.pack(fill="both", expand=True, padx=8, pady=8)
 
         # تب 1: تنظیمات
         self.tab_settings = self.tabview.add("⚙️ Settings")
@@ -153,14 +153,14 @@ class VPNMonitorApp:
             self.tab_settings, fg_color="transparent",
             scrollbar_button_color=COLORS["bg_tertiary"]
         )
-        scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        scroll_frame.pack(fill="both", expand=True, padx=2, pady=2)
 
         # --- کارت 1: Network Adapter & Interval ---
         card1 = CardFrame(scroll_frame, "🌐 Network Adapter & Interval")
-        card1.pack(fill="x", padx=5, pady=8)
+        card1.pack(fill="x", padx=3, pady=4)
 
         inner1 = ctk.CTkFrame(card1, fg_color="transparent")
-        inner1.pack(fill="x", padx=15, pady=(0, 12))
+        inner1.pack(fill="x", padx=10, pady=(0, 8))
 
         ctk.CTkLabel(inner1, text="Adapter:", font=default_font,
                      text_color=COLORS["text_secondary"]).grid(row=0, column=0, sticky="w", pady=5)
@@ -193,10 +193,10 @@ class VPNMonitorApp:
 
         # --- کارت 2: Telegram Bot & Proxy ---
         card2 = CardFrame(scroll_frame, "🤖 Telegram Bot & Proxy Settings")
-        card2.pack(fill="x", padx=5, pady=8)
+        card2.pack(fill="x", padx=3, pady=4)
 
         inner2 = ctk.CTkFrame(card2, fg_color="transparent")
-        inner2.pack(fill="x", padx=15, pady=(0, 12))
+        inner2.pack(fill="x", padx=10, pady=(0, 8))
 
         # Bot Token
         ctk.CTkLabel(inner2, text="Bot Token:", font=default_font,
@@ -251,18 +251,18 @@ class VPNMonitorApp:
 
         # دکمه تست
         self.btn_test_telegram = ctk.CTkButton(
-            card2, text="🔔 Test Bot Connection", font=("Segoe UI", 11, "bold"),
+            card2, text="🔔 Test Bot Connection", font=("Segoe UI", 13, "bold"),
             fg_color=COLORS["accent_purple"], hover_color="#7c3aed",
             height=36, command=self.test_telegram
         )
-        self.btn_test_telegram.pack(fill="x", padx=15, pady=(0, 15))
+        self.btn_test_telegram.pack(fill="x", padx=10, pady=(0, 10))
 
         # --- کارت 3: Target Settings ---
         card3 = CardFrame(scroll_frame, "🎯 Target Settings")
-        card3.pack(fill="x", padx=5, pady=8)
+        card3.pack(fill="x", padx=3, pady=4)
 
         inner3 = ctk.CTkFrame(card3, fg_color="transparent")
-        inner3.pack(fill="x", padx=15, pady=(0, 12))
+        inner3.pack(fill="x", padx=10, pady=(0, 8))
 
         # Ping
         self.chk_ping = ctk.CTkCheckBox(
@@ -304,11 +304,11 @@ class VPNMonitorApp:
 
         # دکمه ذخیره
         self.btn_save_settings = ctk.CTkButton(
-            card3, text="💾 Save All Settings", font=("Segoe UI", 11, "bold"),
+            card3, text="💾 Save All Settings", font=("Segoe UI", 13, "bold"),
             fg_color=COLORS["accent_green"], hover_color="#059669",
             height=36, command=self.save_settings
         )
-        self.btn_save_settings.pack(fill="x", padx=15, pady=(0, 15))
+        self.btn_save_settings.pack(fill="x", padx=10, pady=(0, 10))
 
     def _build_monitor_tab(self, default_font, small_font):
         """ساخت تب مانیتورینگ با کارت‌های وضعیت زنده"""
@@ -316,15 +316,15 @@ class VPNMonitorApp:
         top_bar = ctk.CTkFrame(self.tab_monitor, fg_color=COLORS["bg_secondary"],
                                corner_radius=12, border_width=1,
                                border_color=COLORS["border"])
-        top_bar.pack(fill="x", padx=5, pady=5)
+        top_bar.pack(fill="x", padx=3, pady=3)
 
         status_row = ctk.CTkFrame(top_bar, fg_color="transparent")
-        status_row.pack(fill="x", padx=15, pady=12)
+        status_row.pack(fill="x", padx=8, pady=8)
 
         # دکمه Start/Stop
         self.btn_toggle = ctk.CTkButton(
             status_row, text="▶ Start Monitoring",
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 14, "bold"),
             fg_color=COLORS["accent_green"], hover_color="#059669",
             height=40, corner_radius=8, command=self.toggle_monitoring
         )
@@ -336,27 +336,27 @@ class VPNMonitorApp:
 
         # لیبل وضعیت آداپتور
         self.lbl_status = ctk.CTkLabel(
-            top_bar, text="Status: Inactive", font=("Segoe UI", 11),
+            top_bar, text="Status: Inactive", font=("Segoe UI", 13),
             text_color=COLORS["text_secondary"]
         )
-        self.lbl_status.pack(padx=15, pady=(0, 10), anchor="w")
+        self.lbl_status.pack(padx=8, pady=(0, 8), anchor="w")
 
         # --- کارت‌های وضعیت زنده ---
         cards_container = ctk.CTkFrame(self.tab_monitor, fg_color="transparent")
-        cards_container.pack(fill="x", padx=5, pady=5)
+        cards_container.pack(fill="x", padx=3, pady=3)
 
         # کارت 1: Ping
         self.card_ping = CardFrame(cards_container, "📡 Ping Status")
-        self.card_ping.pack(side="left", fill="both", expand=True, padx=(0, 4), pady=2)
+        self.card_ping.pack(side="left", fill="both", expand=True, padx=(0, 2), pady=2)
 
         self.lbl_ping_target = ctk.CTkLabel(
             self.card_ping, text="Target: Not set", font=small_font,
             text_color=COLORS["text_secondary"]
         )
-        self.lbl_ping_target.pack(padx=12, pady=(4, 2), anchor="w")
+        self.lbl_ping_target.pack(padx=10, pady=(4, 2), anchor="w")
 
         self.lbl_ping_latency = ctk.CTkLabel(
-            self.card_ping, text="-- ms", font=("Segoe UI", 22, "bold"),
+            self.card_ping, text="-- ms", font=("Segoe UI", 26, "bold"),
             text_color=COLORS["text_secondary"]
         )
         self.lbl_ping_latency.pack(pady=4)
@@ -366,16 +366,16 @@ class VPNMonitorApp:
 
         # کارت 2: Local Network
         self.card_local = CardFrame(cards_container, "🏠 Local Network")
-        self.card_local.pack(side="left", fill="both", expand=True, padx=4, pady=2)
+        self.card_local.pack(side="left", fill="both", expand=True, padx=2, pady=2)
 
         self.lbl_local_ip = ctk.CTkLabel(
             self.card_local, text="IP: Not checked", font=small_font,
             text_color=COLORS["text_secondary"]
         )
-        self.lbl_local_ip.pack(padx=12, pady=(4, 2), anchor="w")
+        self.lbl_local_ip.pack(padx=10, pady=(4, 2), anchor="w")
 
         self.lbl_local_cidr = ctk.CTkLabel(
-            self.card_local, text="CIDR: --", font=("Segoe UI", 13, "bold"),
+            self.card_local, text="CIDR: --", font=("Segoe UI", 15, "bold"),
             text_color=COLORS["text_secondary"]
         )
         self.lbl_local_cidr.pack(pady=4)
@@ -385,16 +385,16 @@ class VPNMonitorApp:
 
         # کارت 3: Public IP
         self.card_public = CardFrame(cards_container, "🌍 Public IP")
-        self.card_public.pack(side="left", fill="both", expand=True, padx=(4, 0), pady=2)
+        self.card_public.pack(side="left", fill="both", expand=True, padx=(2, 0), pady=2)
 
         self.lbl_public_current = ctk.CTkLabel(
             self.card_public, text="Current: Not checked", font=small_font,
             text_color=COLORS["text_secondary"]
         )
-        self.lbl_public_current.pack(padx=12, pady=(4, 2), anchor="w")
+        self.lbl_public_current.pack(padx=10, pady=(4, 2), anchor="w")
 
         self.lbl_public_expected = ctk.CTkLabel(
-            self.card_public, text="Expected: --", font=("Segoe UI", 13, "bold"),
+            self.card_public, text="Expected: --", font=("Segoe UI", 15, "bold"),
             text_color=COLORS["text_secondary"]
         )
         self.lbl_public_expected.pack(pady=4)
@@ -404,17 +404,17 @@ class VPNMonitorApp:
 
         # --- کنسول لاگ ---
         log_card = CardFrame(self.tab_monitor, "📜 Event Logs")
-        log_card.pack(fill="both", expand=True, padx=5, pady=5)
+        log_card.pack(fill="both", expand=True, padx=3, pady=3)
 
         self.txt_logs = ctk.CTkTextbox(
-            log_card, font=("Consolas", 10),
+            log_card, font=("Consolas", 12),
             fg_color=COLORS["bg_primary"],
             text_color=COLORS["text_primary"],
             corner_radius=8, border_width=1,
             border_color=COLORS["border"],
             wrap="word"
         )
-        self.txt_logs.pack(fill="both", expand=True, padx=10, pady=10)
+        self.txt_logs.pack(fill="both", expand=True, padx=6, pady=6)
 
     # ============================================
     # متدهای کمکی UI
@@ -742,7 +742,7 @@ class VPNMonitorApp:
             self.root.after(0, lambda: self.lbl_status.configure(
                 text="Testing Telegram...", text_color=COLORS["accent_blue"]))
             self.log("Testing Telegram connection...")
-            success = self.send_telegram_alert("🔔 Test message from VPN Monitor!")
+            success = self.send_telegram_alert("🔔 Test message from TUN Checker!")
             if success:
                 self.root.after(0, lambda: self.lbl_status.configure(
                     text="✅ Test message sent!", text_color=COLORS["accent_green"]))
@@ -763,10 +763,10 @@ class VPNMonitorApp:
         public_line = f"🔹 Public IP: {'✅ ' + str(status['public_current']) if status['public_ok'] else '❌ ' + str(status['public_current'] or 'Unknown')}"
 
         message = (
-            f"🚨 <b>VPN Monitor Alert</b>\n\n"
+            f"🚨 <b>TUN Checker Alert</b>\n\n"
             f"{overall}\n\n"
             f"📊 <b>Detailed Checks:</b>\n"
-            f"🔹 OpenVPN: {'✅ Connected' if status['vpn_connected'] else '❌ Disconnected'}\n"
+            f"🔹 Adapter: {'✅ Connected' if status['vpn_connected'] else '❌ Disconnected'}\n"
             f"{ping_line}\n"
             f"{local_line}\n"
             f"{public_line}\n\n"
@@ -821,7 +821,7 @@ class VPNMonitorApp:
                 if not current_overall and self.last_overall_status:
                     reasons = []
                     if not status["vpn_connected"]:
-                        reasons.append("OpenVPN Down")
+                        reasons.append("Adapter Down")
                     if not status["ping_ok"]:
                         reasons.append("Ping Failed")
                     if not status["local_ok"]:
