@@ -591,7 +591,7 @@ class VPNMonitorApp:
     def get_public_ip(self):
         """دریافت IP پابلیک فعلی از طریق api.ipify.org"""
         try:
-            response = requests.get("https://api.ipify.org", timeout=5)
+            response = requests.get("https://api.ipmyp.ir", timeout=5)
             if response.status_code == 200:
                 return response.text.strip()
             return None
@@ -690,10 +690,10 @@ class VPNMonitorApp:
             "overall_ok"] else "🔴 <b>Overall Status: CRITICAL</b>"
 
         message = (
-            f"🚨 <b>VPN Monitor Alert</b>\n\n"
+            f"🚨 <b>Network Adapter Monitor Alert</b>\n\n"
             f"{overall_text}\n\n"
             f"📊 <b>Detailed Checks:</b>\n"
-            f"🔹 OpenVPN Adapter: {status['vpn_status']}\n"
+            f"🔹 Network Adapter: {status['vpn_status']}\n"
             f"🔹 Ping: {status['ping_status']}\n"
             f"🔹 Local IP: {status['local_status']}\n"
             f"🔹 Public IP: {status['public_status']}\n\n"
