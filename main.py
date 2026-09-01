@@ -87,8 +87,8 @@ class VPNMonitorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("TUN Checker")
-        self.root.geometry("560x820")
-        self.root.minsize(520, 780)
+        self.root.geometry("560x850")  # کمی ارتفاع را بیشتر کردم برای چک‌باکس‌های جدید
+        self.root.minsize(520, 800)
         self.root.configure(fg_color=COLORS["bg_primary"])
 
         # متغیرهای وضعیت
@@ -102,7 +102,11 @@ class VPNMonitorApp:
 
         # متغیرهای ردیابی وضعیت برای جلوگیری از اسپم
         self.last_overall_status = None
+
+        # متغیرهای چک‌باکس‌ها
         self.ping_enabled = ctk.BooleanVar(value=False)
+        self.local_cidr_enabled = ctk.BooleanVar(value=False)  # جدید
+        self.public_ip_enabled = ctk.BooleanVar(value=False)  # جدید
 
         self.setup_ui()
         self.refresh_adapters()
@@ -119,11 +123,9 @@ class VPNMonitorApp:
     # راه‌اندازی UI
     # ============================================
     def setup_ui(self):
-        # فونت‌های بزرگ‌تر
         default_font = ("Segoe UI", 13)
         small_font = ("Segoe UI", 12)
 
-        # ایجاد سیستم تب‌بندی
         self.tabview = ctk.CTkTabview(
             self.root, fg_color=COLORS["bg_primary"],
             segmented_button_fg_color=COLORS["bg_secondary"],
@@ -165,7 +167,7 @@ class VPNMonitorApp:
         ctk.CTkLabel(inner1, text="Adapter:", font=default_font,
                      text_color=COLORS["text_secondary"]).grid(row=0, column=0, sticky="w", pady=5)
         self.combo_adapters = ctk.CTkComboBox(
-            inner1, state="readonly", width=320, font=default_font,
+            inner1, state="readonly", width=280, font=default_font,
             fg_color=COLORS["bg_tertiary"], button_color=COLORS["accent_blue"],
             button_hover_color=COLORS["accent_blue"],
             dropdown_fg_color=COLORS["bg_secondary"],
@@ -281,26 +283,40 @@ class VPNMonitorApp:
         )
         self.entry_ping_ip.grid(row=1, column=1, sticky="w", padx=10, pady=4)
 
-        # Local CIDR
+        # Local CIDR (جدید)
+        self.chk_local_cidr = ctk.CTkCheckBox(
+            inner3, text="Enable Local CIDR Check", variable=self.local_cidr_enabled,
+            font=default_font, text_color=COLORS["text_primary"],
+            fg_color=COLORS["accent_blue"], hover_color=COLORS["accent_blue"]
+        )
+        self.chk_local_cidr.grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 4))
+
         ctk.CTkLabel(inner3, text="Expected Local CIDR:", font=default_font,
-                     text_color=COLORS["text_secondary"]).grid(row=2, column=0, sticky="w", pady=4)
+                     text_color=COLORS["text_secondary"]).grid(row=3, column=0, sticky="w", pady=4)
         self.entry_local_cidr = ctk.CTkEntry(
             inner3, width=200, font=default_font,
             fg_color=COLORS["bg_tertiary"], border_color=COLORS["border"],
             text_color=COLORS["text_primary"], placeholder_text="192.168.0.0/16"
         )
         self.entry_local_cidr.insert(0, "192.168.0.0/16")
-        self.entry_local_cidr.grid(row=2, column=1, sticky="w", padx=10, pady=4)
+        self.entry_local_cidr.grid(row=3, column=1, sticky="w", padx=10, pady=4)
 
-        # Public IP
+        # Public IP (جدید)
+        self.chk_public_ip = ctk.CTkCheckBox(
+            inner3, text="Enable Public IP Check", variable=self.public_ip_enabled,
+            font=default_font, text_color=COLORS["text_primary"],
+            fg_color=COLORS["accent_blue"], hover_color=COLORS["accent_blue"]
+        )
+        self.chk_public_ip.grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 4))
+
         ctk.CTkLabel(inner3, text="Expected Public IP:", font=default_font,
-                     text_color=COLORS["text_secondary"]).grid(row=3, column=0, sticky="w", pady=4)
+                     text_color=COLORS["text_secondary"]).grid(row=5, column=0, sticky="w", pady=4)
         self.entry_public_ip = ctk.CTkEntry(
             inner3, width=200, font=default_font,
             fg_color=COLORS["bg_tertiary"], border_color=COLORS["border"],
             text_color=COLORS["text_primary"], placeholder_text="203.0.113.5"
         )
-        self.entry_public_ip.grid(row=3, column=1, sticky="w", padx=10, pady=4)
+        self.entry_public_ip.grid(row=5, column=1, sticky="w", padx=10, pady=4)
 
         # دکمه ذخیره
         self.btn_save_settings = ctk.CTkButton(
@@ -308,7 +324,7 @@ class VPNMonitorApp:
             fg_color=COLORS["accent_green"], hover_color="#059669",
             height=36, command=self.save_settings
         )
-        self.btn_save_settings.pack(fill="x", padx=10, pady=(0, 10))
+        self.btn_save_settings.pack(fill="x", padx=10, pady=(10, 10))
 
     def _build_monitor_tab(self, default_font, small_font):
         """ساخت تب مانیتورینگ با کارت‌های وضعیت زنده"""
@@ -502,7 +518,9 @@ class VPNMonitorApp:
                 "chat_id": (self.entry_chat_id, "entry"),
                 "ping_enabled": (self.ping_enabled, "bool"),
                 "ping_ip": (self.entry_ping_ip, "entry"),
+                "local_cidr_enabled": (self.local_cidr_enabled, "bool"),  # جدید
                 "local_cidr": (self.entry_local_cidr, "entry"),
+                "public_ip_enabled": (self.public_ip_enabled, "bool"),  # جدید
                 "public_ip": (self.entry_public_ip, "entry"),
             }
 
@@ -531,7 +549,9 @@ class VPNMonitorApp:
             "chat_id": self.entry_chat_id.get().strip(),
             "ping_enabled": self.ping_enabled.get(),
             "ping_ip": self.entry_ping_ip.get().strip(),
+            "local_cidr_enabled": self.local_cidr_enabled.get(),  # جدید
             "local_cidr": self.entry_local_cidr.get().strip(),
+            "public_ip_enabled": self.public_ip_enabled.get(),  # جدید
             "public_ip": self.entry_public_ip.get().strip(),
         }
         try:
@@ -669,7 +689,8 @@ class VPNMonitorApp:
         current_local_ip = self.get_adapter_ipv4(selected_adapter)
         expected_cidr = self.entry_local_cidr.get().strip()
         local_ok = True
-        if expected_cidr:
+        # تغییر: فقط در صورتی چک شود که تیک آن فعال باشد
+        if self.local_cidr_enabled.get() and expected_cidr:
             if current_local_ip and not current_local_ip.startswith("169.254"):
                 local_ok = self.is_ip_in_cidr(current_local_ip, expected_cidr)
             else:
@@ -679,7 +700,8 @@ class VPNMonitorApp:
         expected_public = self.entry_public_ip.get().strip()
         public_ok = True
         current_public = None
-        if expected_public:
+        # تغییر: فقط در صورتی چک شود که تیک آن فعال باشد
+        if self.public_ip_enabled.get() and expected_public:
             current_public = self.get_public_ip()
             public_ok = (current_public == expected_public)
 
@@ -871,24 +893,28 @@ class VPNMonitorApp:
         local_ip = status["local_ip"] or "No IP"
         self.lbl_local_ip.configure(text=f"IP: {local_ip}")
         self.lbl_local_cidr.configure(text=f"CIDR: {status['local_cidr'] or '--'}")
-        if status["local_cidr"]:
+
+        # تغییر: بررسی تیک فعال‌سازی Local CIDR
+        if self.local_cidr_enabled.get() and status["local_cidr"]:
             if status["local_ok"]:
                 self.badge_local.update_status("Match ✓", COLORS["accent_green"])
             else:
                 self.badge_local.update_status("Mismatch ✗", COLORS["accent_red"])
         else:
-            self.badge_local.update_status("Not Set", COLORS["text_secondary"])
+            self.badge_local.update_status("Disabled", COLORS["text_secondary"])
 
         # کارت Public
         self.lbl_public_current.configure(text=f"Current: {status['public_current'] or 'Unknown'}")
         self.lbl_public_expected.configure(text=f"Expected: {status['public_expected'] or '--'}")
-        if status["public_expected"]:
+
+        # تغییر: بررسی تیک فعال‌سازی Public IP
+        if self.public_ip_enabled.get() and status["public_expected"]:
             if status["public_ok"]:
                 self.badge_public.update_status("Match ✓", COLORS["accent_green"])
             else:
                 self.badge_public.update_status("Mismatch ✗", COLORS["accent_red"])
         else:
-            self.badge_public.update_status("Not Set", COLORS["text_secondary"])
+            self.badge_public.update_status("Disabled", COLORS["text_secondary"])
 
     # ============================================
     # کنترل مانیتورینگ
@@ -934,7 +960,11 @@ class VPNMonitorApp:
         self.entry_bot_token.configure(state="disabled" if disabled else "normal")
         self.entry_chat_id.configure(state="disabled" if disabled else "normal")
         self.entry_ping_ip.configure(state="disabled" if disabled else "normal")
+
+        # تغییر: اضافه شدن چک‌باکس‌ها و فیلدهای جدید به لیست قفل شدن
+        self.chk_local_cidr.configure(state="disabled" if disabled else "normal")
         self.entry_local_cidr.configure(state="disabled" if disabled else "normal")
+        self.chk_public_ip.configure(state="disabled" if disabled else "normal")
         self.entry_public_ip.configure(state="disabled" if disabled else "normal")
         self.chk_ping.configure(state="disabled" if disabled else "normal")
         self.btn_toggle_token.configure(state="disabled" if disabled else "normal")
