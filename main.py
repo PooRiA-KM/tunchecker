@@ -22,8 +22,20 @@ class VPNMonitorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VPN Monitor & Telegram Notifier")
-        self.root.geometry("460x760")
+        self.root.geometry("480x800")
         self.root.resizable(False, False)
+
+        # ایجاد سیستم تب‌بندی
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # تب تنظیمات
+        self.tab_settings = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_settings, text="⚙️ Settings")
+
+        # تب مانیتورینگ
+        self.tab_monitor = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_monitor, text="📊 Monitor")
 
         # متغیرهای وضعیت
         self.is_running = False
@@ -55,125 +67,106 @@ class VPNMonitorApp:
         style.configure("TLabel", font=("Comic Sans MS", 10))
         style.configure("TButton", font=("Comic Sans MS", 10))
         style.configure("TLabelframe.Label", font=("Comic Sans MS", 10, "bold"))
+        style.configure("TNotebook.Tab", font=("Comic Sans MS", 10, "bold"))
 
         # تنظیم فونت برای منوی کشویی و فیلدهای متنی استاندارد تکینتر
         self.root.option_add("*TCombobox*Listbox.font", ("Comic Sans MS", 10))
         font_entry = ("Comic Sans MS", 10)
 
+        # ============================================
+        # تب ۱: تنظیمات (Settings)
+        # ============================================
+
         # فریم انتخاب کارت شبکه
-        frame_adapter = ttk.LabelFrame(self.root, text=" Network Adapter Selection ", padding=10)
+        frame_adapter = ttk.LabelFrame(self.tab_settings, text=" Network Adapter Selection ", padding=10)
         frame_adapter.pack(fill="x", padx=10, pady=5)
-
         ttk.Label(frame_adapter, text="Adapter:").grid(row=0, column=0, sticky="w", pady=5)
-
-        # منوی کشویی برای لیست آداپتورها
         self.combo_adapters = ttk.Combobox(frame_adapter, state="readonly", width=28, font=font_entry)
         self.combo_adapters.grid(row=0, column=1, padx=5, pady=5)
-
-        # دکمه بروزرسانی لیست آداپتورها
         btn_refresh = ttk.Button(frame_adapter, text="🔄", width=3, command=self.refresh_adapters)
         btn_refresh.grid(row=0, column=2, padx=2)
 
         # فریم تنظیمات زمان‌بندی
-        frame_interval = ttk.LabelFrame(self.root, text=" Interval Settings ", padding=10)
+        frame_interval = ttk.LabelFrame(self.tab_settings, text=" Interval Settings ", padding=10)
         frame_interval.pack(fill="x", padx=10, pady=5)
-
         ttk.Label(frame_interval, text="Check Interval (sec):").grid(row=0, column=0, sticky="w", pady=5)
         self.entry_interval = ttk.Entry(frame_interval, width=10, font=font_entry)
         self.entry_interval.insert(0, "10")
         self.entry_interval.grid(row=0, column=1, sticky="e", padx=5)
 
-        # فریم بررسی پیشرفته اتصال
-        frame_advanced = ttk.LabelFrame(self.root, text=" Advanced Connectivity Verification ", padding=10)
-        frame_advanced.pack(fill="x", padx=10, pady=5)
+        # فریم پروکسی
+        frame_proxy = ttk.LabelFrame(self.tab_settings, text=" Telegram Proxy Settings (Optional) ", padding=10)
+        frame_proxy.pack(fill="x", padx=10, pady=5)
+        ttk.Label(frame_proxy, text="IP Address:").grid(row=0, column=0, sticky="w", pady=2)
+        self.entry_proxy_ip = ttk.Entry(frame_proxy, width=20, font=font_entry)
+        self.entry_proxy_ip.grid(row=0, column=1, padx=5, pady=2)
+        ttk.Label(frame_proxy, text="Port:").grid(row=1, column=0, sticky="w", pady=2)
+        self.entry_proxy_port = ttk.Entry(frame_proxy, width=20, font=font_entry)
+        self.entry_proxy_port.grid(row=1, column=1, padx=5, pady=2)
 
-        # رنج IP لوکال
+        # فریم تلگرام
+        frame_telegram = ttk.LabelFrame(self.tab_settings, text=" Telegram Bot Settings ", padding=10)
+        frame_telegram.pack(fill="x", padx=10, pady=5)
+        ttk.Label(frame_telegram, text="Bot Token:").grid(row=0, column=0, sticky="w", pady=2)
+        self.entry_bot_token = ttk.Entry(frame_telegram, width=23, show="*", font=font_entry)
+        self.entry_bot_token.grid(row=0, column=1, padx=2, pady=2)
+        self.btn_toggle_token = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_token_visibility)
+        self.btn_toggle_token.grid(row=0, column=2, padx=2)
+        ttk.Label(frame_telegram, text="Chat ID:").grid(row=1, column=0, sticky="w", pady=2)
+        self.entry_chat_id = ttk.Entry(frame_telegram, width=23, show="*", font=font_entry)
+        self.entry_chat_id.grid(row=1, column=1, padx=2, pady=2)
+        self.btn_toggle_chat_id = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_chat_id_visibility)
+        self.btn_toggle_chat_id.grid(row=1, column=2, padx=2)
+        self.btn_test_telegram = ttk.Button(frame_telegram, text="Test Bot Connection", command=self.test_telegram)
+        self.btn_test_telegram.grid(row=2, column=0, columnspan=3, sticky="we", pady=(8, 2))
+
+        # فریم بررسی اتصال واقعی (پینگ)
+        frame_ping = ttk.LabelFrame(self.tab_settings, text=" Connectivity Check (Optional Ping) ", padding=10)
+        frame_ping.pack(fill="x", padx=10, pady=5)
+        self.ping_enabled = tk.BooleanVar(value=False)
+        self.chk_ping = ttk.Checkbutton(frame_ping, text="Enable Ping Check", variable=self.ping_enabled)
+        self.chk_ping.grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Label(frame_ping, text="Target IP:").grid(row=1, column=0, sticky="w", pady=2)
+        self.entry_ping_ip = ttk.Entry(frame_ping, width=20, font=font_entry)
+        self.entry_ping_ip.grid(row=1, column=1, padx=5, pady=2)
+
+        # فریم بررسی پیشرفته اتصال
+        frame_advanced = ttk.LabelFrame(self.tab_settings, text=" Advanced Connectivity Verification ", padding=10)
+        frame_advanced.pack(fill="x", padx=10, pady=5)
         ttk.Label(frame_advanced, text="Expected Local CIDR:").grid(row=0, column=0, sticky="w", pady=2)
         self.entry_local_cidr = ttk.Entry(frame_advanced, width=20, font=font_entry)
-        self.entry_local_cidr.insert(0, "192.168.0.0/16")  # مقدار پیش‌فرض
+        self.entry_local_cidr.insert(0, "192.168.0.0/16")
         self.entry_local_cidr.grid(row=0, column=1, padx=5, pady=2)
         self.lbl_local_status = ttk.Label(frame_advanced, text="⚪", font=("Segoe UI Emoji", 14))
         self.lbl_local_status.grid(row=0, column=2, padx=5)
-
-        # نمایش IP لوکال فعلی
         self.lbl_current_local_ip = ttk.Label(frame_advanced, text="Current Local IP: Not checked", foreground="gray",
                                               font=("Comic Sans MS", 9))
         self.lbl_current_local_ip.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 5))
-
-        # IP پابلیک سرور
         ttk.Label(frame_advanced, text="Expected Public IP:").grid(row=2, column=0, sticky="w", pady=2)
         self.entry_public_ip = ttk.Entry(frame_advanced, width=20, font=font_entry)
         self.entry_public_ip.grid(row=2, column=1, padx=5, pady=2)
         self.lbl_public_status = ttk.Label(frame_advanced, text="⚪", font=("Segoe UI Emoji", 14))
         self.lbl_public_status.grid(row=2, column=2, padx=5)
 
-        # فریم بررسی اتصال واقعی (پینگ)
-        frame_ping = ttk.LabelFrame(self.root, text=" Connectivity Check (Optional Ping) ", padding=10)
-        frame_ping.pack(fill="x", padx=10, pady=5)
+        # ============================================
+        # تب ۲: مانیتورینگ (Monitor)
+        # ============================================
 
-        self.ping_enabled = tk.BooleanVar(value=False)
-        self.chk_ping = ttk.Checkbutton(frame_ping, text="Enable Ping Check", variable=self.ping_enabled)
-        self.chk_ping.grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
-
-        ttk.Label(frame_ping, text="Target IP:").grid(row=1, column=0, sticky="w", pady=2)
-        self.entry_ping_ip = ttk.Entry(frame_ping, width=20, font=font_entry)
-        self.entry_ping_ip.grid(row=1, column=1, padx=5, pady=2)
-
-        # فریم پروکسی
-        frame_proxy = ttk.LabelFrame(self.root, text=" Telegram Proxy Settings (Optional) ", padding=10)
-        frame_proxy.pack(fill="x", padx=10, pady=5)
-
-        ttk.Label(frame_proxy, text="IP Address:").grid(row=0, column=0, sticky="w", pady=2)
-        self.entry_proxy_ip = ttk.Entry(frame_proxy, width=20, font=font_entry)
-        self.entry_proxy_ip.grid(row=0, column=1, padx=5, pady=2)
-
-        ttk.Label(frame_proxy, text="Port:").grid(row=1, column=0, sticky="w", pady=2)
-        self.entry_proxy_port = ttk.Entry(frame_proxy, width=20, font=font_entry)
-        self.entry_proxy_port.grid(row=1, column=1, padx=5, pady=2)
-
-        # فریم تلگرام
-        frame_telegram = ttk.LabelFrame(self.root, text=" Telegram Bot Settings ", padding=10)
-        frame_telegram.pack(fill="x", padx=10, pady=5)
-
-        ttk.Label(frame_telegram, text="Bot Token:").grid(row=0, column=0, sticky="w", pady=2)
-        # افزودن show="*" برای مخفی‌سازی توکن
-        self.entry_bot_token = ttk.Entry(frame_telegram, width=23, show="*", font=font_entry)
-        self.entry_bot_token.grid(row=0, column=1, padx=2, pady=2)
-
-        self.btn_toggle_token = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_token_visibility)
-        self.btn_toggle_token.grid(row=0, column=2, padx=2)
-
-        ttk.Label(frame_telegram, text="Chat ID:").grid(row=1, column=0, sticky="w", pady=2)
-        # افزودن show="*" برای مخفی‌سازی چت آیدی
-        self.entry_chat_id = ttk.Entry(frame_telegram, width=23, show="*", font=font_entry)
-        self.entry_chat_id.grid(row=1, column=1, padx=2, pady=2)
-
-        self.btn_toggle_chat_id = ttk.Button(frame_telegram, text="👁️", width=3, command=self.toggle_chat_id_visibility)
-        self.btn_toggle_chat_id.grid(row=1, column=2, padx=2)
-
-        # دکمه تست تلگرام
-        self.btn_test_telegram = ttk.Button(frame_telegram, text="Test Bot Connection", command=self.test_telegram)
-        self.btn_test_telegram.grid(row=2, column=0, columnspan=3, sticky="we", pady=(8, 2))
-
-        # وضعیت و دکمه‌ها
-        frame_actions = ttk.Frame(self.root, padding=10)
+        # فریم وضعیت و دکمه‌ها
+        frame_actions = ttk.Frame(self.tab_monitor, padding=10)
         frame_actions.pack(fill="x", padx=10, pady=2)
-
         self.lbl_status = ttk.Label(frame_actions, text="Status: Inactive", font=("Comic Sans MS", 11, "bold"),
                                     foreground="gray")
         self.lbl_status.pack(pady=2)
-
         self.btn_toggle = ttk.Button(frame_actions, text="Start Monitoring", command=self.toggle_monitoring)
         self.btn_toggle.pack(fill="x", pady=2)
 
         # فریم نمایش لاگ‌ها
-        frame_logs = ttk.LabelFrame(self.root, text=" Event Logs ", padding=10)
+        frame_logs = ttk.LabelFrame(self.tab_monitor, text=" Event Logs ", padding=10)
         frame_logs.pack(fill="both", expand=True, padx=10, pady=5)
-
-        self.txt_logs = tk.Text(frame_logs, height=8, font=("Comic Sans MS", 8), state="disabled", wrap="word")
+        self.txt_logs = tk.Text(frame_logs, height=15, font=("Comic Sans MS", 8), state="disabled", wrap="word")
         scrollbar_y = ttk.Scrollbar(frame_logs, orient="vertical", command=self.txt_logs.yview)
         self.txt_logs.configure(yscrollcommand=scrollbar_y.set)
-
         scrollbar_y.pack(side="right", fill="y")
         self.txt_logs.pack(side="left", fill="both", expand=True)
 
@@ -550,21 +543,22 @@ class VPNMonitorApp:
         self.btn_toggle_token.config(state=state)
         self.btn_toggle_chat_id.config(state=state)
         self.btn_test_telegram.config(state=state)
-        # مدیریت وضعیت چک‌باکس و فیلد پینگ
-        if state == "disabled":
-            self.chk_ping.config(state="disabled")
-            self.entry_ping_ip.config(state="disabled")
-        else:
-            self.chk_ping.config(state="normal")
-            self.entry_ping_ip.config(state="normal")
 
         # مدیریت وضعیت فیلدهای پیشرفته
         if state == "disabled":
+            self.chk_ping.config(state="disabled")
+            self.entry_ping_ip.config(state="disabled")
             self.entry_local_cidr.config(state="disabled")
             self.entry_public_ip.config(state="disabled")
+            # قفل کردن تب تنظیمات (اختیاری)
+            self.notebook.tab(0, state="disabled")
         else:
+            self.chk_ping.config(state="normal")
+            self.entry_ping_ip.config(state="normal")
             self.entry_local_cidr.config(state="normal")
             self.entry_public_ip.config(state="normal")
+            # باز کردن تب تنظیمات
+            self.notebook.tab(0, state="normal")
 
     def get_adapter_ipv4(self, adapter_name):
         """دریافت آدرس IPv4 کارت شبکه انتخاب شده با استفاده از psutil"""
