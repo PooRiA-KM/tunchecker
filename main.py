@@ -102,6 +102,8 @@ class VPNMonitorApp:
 
         # متغیرهای ردیابی وضعیت برای جلوگیری از اسپم
         self.last_overall_status = None
+        self.last_alert_time = 0  # ✅ جدید: زمان آخرین هشدار
+        self.alert_cooldown = 15  # ✅ جدید: حداقل ۶۰ ثانیه بین دو هشدار
 
         # متغیرهای چک‌باکس‌ها
         self.ping_enabled = ctk.BooleanVar(value=False)
@@ -678,30 +680,28 @@ class VPNMonitorApp:
         # 1. OpenVPN
         vpn_connected = self.is_openvpn_connected()
 
-        # 2. Ping
+        # 2. Ping - فقط وقتی VPN وصل است
         ping_ok = True
         ping_latency = None
         target_ip = self.entry_ping_ip.get().strip()
         if self.ping_enabled.get() and target_ip and vpn_connected:
             ping_ok, ping_latency = self.perform_ping(target_ip)
 
-        # 3. Local IP
+        # 3. Local IP - فقط وقتی VPN وصل است
         current_local_ip = self.get_adapter_ipv4(selected_adapter)
         expected_cidr = self.entry_local_cidr.get().strip()
         local_ok = True
-        # تغییر: فقط در صورتی چک شود که تیک آن فعال باشد
-        if self.local_cidr_enabled.get() and expected_cidr:
+        if self.local_cidr_enabled.get() and expected_cidr and vpn_connected:  # ✅ vpn_connected اضافه شد
             if current_local_ip and not current_local_ip.startswith("169.254"):
                 local_ok = self.is_ip_in_cidr(current_local_ip, expected_cidr)
             else:
                 local_ok = False
 
-        # 4. Public IP
+        # 4. Public IP - فقط وقتی VPN وصل است
         expected_public = self.entry_public_ip.get().strip()
         public_ok = True
         current_public = None
-        # تغییر: فقط در صورتی چک شود که تیک آن فعال باشد
-        if self.public_ip_enabled.get() and expected_public:
+        if self.public_ip_enabled.get() and expected_public and vpn_connected:  # ✅ vpn_connected اضافه شد
             current_public = self.get_public_ip()
             public_ok = (current_public == expected_public)
 
@@ -774,7 +774,23 @@ class VPNMonitorApp:
 
         threading.Thread(target=run_test, daemon=True).start()
 
+    def should_send_alert(self):
+        """بررسی اینکه آیا می‌توان هشدار ارسال کرد (Rate Limiting)"""
+        current_time = time.time()
+        time_since_last = current_time - self.last_alert_time
+
+        if time_since_last < self.alert_cooldown:
+            remaining = int(self.alert_cooldown - time_since_last)
+            self.log(f"⏳ Alert rate limited. Next alert available in {remaining}s")
+            return False
+
+        return True
+
     def send_comprehensive_alert(self, trigger_reason):
+        # ✅ بررسی Rate Limiting قبل از ارسال
+        if not self.should_send_alert():
+            return
+
         status = self.get_full_status_report()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -797,7 +813,10 @@ class VPNMonitorApp:
         )
 
         self.log(f"Sending comprehensive alert. Trigger: {trigger_reason}")
-        self.send_telegram_alert(message)
+        success = self.send_telegram_alert(message)
+
+        if success:
+            self.last_alert_time = time.time()  # ✅ به‌روزرسانی زمان آخرین هشدار
 
     # ============================================
     # حلقه مانیتورینگ
