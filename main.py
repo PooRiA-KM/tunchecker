@@ -706,7 +706,7 @@ class VPNMonitorApp:
 
     def get_public_ip(self):
         try:
-            response = requests.get("https://api.ipify.org", timeout=5)
+            response = requests.get("https://api.ipmyp.ir/", timeout=5)
             if response.status_code == 200:
                 return response.text.strip()
             return None
@@ -814,6 +814,15 @@ class VPNMonitorApp:
     # ============================================
     # تلگرام
     # ============================================
+    def get_proxy_settings(self):
+        """دریافت دیکشنری تنظیمات پروکسی از UI"""
+        proxy_ip = self.entry_proxy_ip.get().strip()
+        proxy_port = self.entry_proxy_port.get().strip()
+        if proxy_ip and proxy_port:
+            proxy_url = f"http://{proxy_ip}:{proxy_port}"
+            return {"http": proxy_url, "https": proxy_url}
+        return None
+
     def send_telegram_alert(self, message, reply_markup=None, max_retries=3, retry_delay=5):
         """ارسال پیام تلگرام با قابلیت Retry و Reply Markup"""
         token = self.entry_bot_token.get().strip()
@@ -824,28 +833,16 @@ class VPNMonitorApp:
             return False
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "HTML"
-        }
-
-        # ✅ اضافه کردن Reply Markup اگر وجود داشته باشد
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
         if reply_markup:
             payload["reply_markup"] = reply_markup
 
-        proxies = None
-        proxy_ip = self.entry_proxy_ip.get().strip()
-        proxy_port = self.entry_proxy_port.get().strip()
-        if proxy_ip and proxy_port:
-            proxy_url = f"http://{proxy_ip}:{proxy_port}"
-            proxies = {"http": proxy_url, "https": proxy_url}
+        proxies = self.get_proxy_settings()  # ✅ اعمال پروکسی
 
         # تلاش مجدد با Retry
         for attempt in range(max_retries):
             try:
-                response = requests.post(url, data=payload, proxies=proxies, timeout=10)
-
+                response = requests.post(url, json=payload, proxies=proxies, timeout=10)
                 if response.status_code == 200:
                     self.log("Telegram alert sent successfully.")
                     return True
@@ -939,7 +936,7 @@ class VPNMonitorApp:
         if success:
             self.last_alert_time = time.time()  # ✅ به‌روزرسانی زمان آخرین هشدار
 
-    
+
     def create_bot_menu(self):
         """ساخت منوی Inline Keyboard برای ربات"""
         keyboard = {
@@ -1000,10 +997,12 @@ class VPNMonitorApp:
 
         url = f"https://api.telegram.org/bot{token}/getUpdates"
         offset = 0
+        proxies = self.get_proxy_settings()  # ✅ اعمال پروکسی
 
         while self.is_running:
             try:
-                response = requests.get(url, params={"offset": offset, "timeout": 30}, timeout=35)
+                # اضافه شدن proxies=proxies به درخواست
+                response = requests.get(url, params={"offset": offset, "timeout": 30}, proxies=proxies, timeout=35)
 
                 if response.status_code == 200:
                     data = response.json()
@@ -1016,15 +1015,14 @@ class VPNMonitorApp:
                                 chat_id = callback["message"]["chat"]["id"]
                                 message_id = callback["message"]["message_id"]
 
-                                # پردازش callback
                                 self.process_callback(callback_data, chat_id, message_id)
 
-                                # Answer callback query (حذف loading از دکمه)
+                                # پاسخ به کوئری برای حذف حالت Loading دکمه
                                 answer_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
-                                requests.post(answer_url, data={"callback_query_id": callback["id"]})
+                                requests.post(answer_url, data={"callback_query_id": callback["id"]}, proxies=proxies,
+                                              timeout=10)
 
                                 offset = update["update_id"] + 1
-
             except Exception as e:
                 self.log(f"Error in callback handler: {e}")
                 time.sleep(5)
@@ -1148,17 +1146,14 @@ class VPNMonitorApp:
             return False
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "HTML"
-        }
-
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
         if reply_markup:
             payload["reply_markup"] = reply_markup
 
+        proxies = self.get_proxy_settings()  # ✅ اعمال پروکسی
+
         try:
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, proxies=proxies, timeout=10)
             return response.status_code == 200
         except Exception as e:
             self.log(f"Error sending message to chat {chat_id}: {e}")
