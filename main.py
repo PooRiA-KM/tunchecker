@@ -813,26 +813,30 @@ class VPNMonitorApp:
 
         threading.Thread(target=run_test, daemon=True).start()
 
-    def should_send_alert(self):
+    def should_send_alert(self, is_recovery=False):
         """بررسی اینکه آیا می‌توان هشدار ارسال کرد (Rate Limiting)"""
+        # ✅ هشدارهای Recovery همیشه ارسال می‌شوند
+        if is_recovery:
+            self.log("🟢 Recovery alert - bypassing rate limit")
+            return True
+
         current_time = time.time()
         time_since_last = current_time - self.last_alert_time
 
         if time_since_last < self.alert_cooldown:
             remaining = int(self.alert_cooldown - time_since_last)
-            self.log(f"⏳ Alert rate limited. Next alert available in {remaining}s")
+            self.log(f"⏳ Critical alert rate limited. Next alert available in {remaining}s")
             return False
 
         return True
 
-    def send_comprehensive_alert(self, trigger_reason):
+    def send_comprehensive_alert(self, trigger_reason, is_recovery=False):
         # ✅ بررسی Rate Limiting قبل از ارسال
-        if not self.should_send_alert():
+        if not self.should_send_alert(is_recovery):
             return
 
         status = self.get_full_status_report()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         overall = "🟢 <b>HEALTHY</b>" if status["overall_ok"] else "🔴 <b>CRITICAL</b>"
 
         ping_line = f"🔹 Ping: {'✅ ' + str(status['ping_latency']) + 'ms' if status['ping_ok'] else '❌ Unreachable'}"
@@ -899,6 +903,7 @@ class VPNMonitorApp:
                 current_overall = status["overall_ok"]
 
                 if not current_overall and self.last_overall_status:
+                    # ❌ Critical alert - rate limited می‌شود
                     reasons = []
                     if not status["vpn_connected"]:
                         reasons.append("Adapter Down")
@@ -909,9 +914,11 @@ class VPNMonitorApp:
                     if not status["public_ok"]:
                         reasons.append("Public IP Mismatch")
                     trigger = " | ".join(reasons) if reasons else "Unknown"
-                    self.send_comprehensive_alert(trigger)
+                    self.send_comprehensive_alert(trigger, is_recovery=False)  # ✅ پارامتر اضافه شد
+
                 elif current_overall and not self.last_overall_status:
-                    self.send_comprehensive_alert("✅ System Recovered")
+                    # ✅ Recovery alert - همیشه ارسال می‌شود
+                    self.send_comprehensive_alert("✅ System Recovered", is_recovery=True)  # ✅ پارامتر اضافه شد
 
                 self.last_overall_status = current_overall
 
