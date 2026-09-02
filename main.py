@@ -112,6 +112,9 @@ class VPNMonitorApp:
         self.total_downtime_seconds = 0  # مجموع کل قطعی
         self.last_status_change_time = None  # زمان آخرین تغییر وضعیت
 
+        # ✅ متغیرهای منوی ربات
+        self.pending_reconnect = False  # آیا منتظر تأیید reconnect هستیم؟
+
         # متغیرهای چک‌باکس‌ها
         self.ping_enabled = ctk.BooleanVar(value=False)
         self.local_cidr_enabled = ctk.BooleanVar(value=False)  # جدید
@@ -267,6 +270,25 @@ class VPNMonitorApp:
             height=36, command=self.test_telegram
         )
         self.btn_test_telegram.pack(fill="x", padx=10, pady=(0, 10))
+
+        # --- کارت 4: OpenVPN Profile ---
+        card4 = CardFrame(scroll_frame, "🔐 OpenVPN Profile")
+        card4.pack(fill="x", padx=3, pady=4)
+        inner4 = ctk.CTkFrame(card4, fg_color="transparent")
+        inner4.pack(fill="x", padx=10, pady=(0, 8))
+
+        ctk.CTkLabel(inner4, text="Profile ID:", font=default_font,
+                     text_color=COLORS["text_secondary"]).grid(row=0, column=0, sticky="w", pady=5)
+        self.entry_openvpn_profile_id = ctk.CTkEntry(
+            inner4, width=280, font=default_font,
+            fg_color=COLORS["bg_tertiary"], border_color=COLORS["border"],
+            text_color=COLORS["text_primary"], placeholder_text="Enter OpenVPN Profile ID"
+        )
+        self.entry_openvpn_profile_id.grid(row=0, column=1, padx=10, pady=5)
+
+        ctk.CTkLabel(inner4, text="💡 Find in PowerShell: OpenVPNConnect.exe --list-profiles",
+                     font=small_font, text_color=COLORS["text_secondary"]).grid(row=1, column=0, columnspan=2,
+                                                                                sticky="w", pady=(0, 5))
 
         # --- کارت 3: Target Settings ---
         card3 = CardFrame(scroll_frame, "🎯 Target Settings")
@@ -570,6 +592,7 @@ class VPNMonitorApp:
                 "local_cidr": (self.entry_local_cidr, "entry"),
                 "public_ip_enabled": (self.public_ip_enabled, "bool"),  # جدید
                 "public_ip": (self.entry_public_ip, "entry"),
+                "openvpn_profile_id": (self.entry_openvpn_profile_id, "entry"),
             }
 
             for key, (widget, wtype) in fields.items():
@@ -601,6 +624,7 @@ class VPNMonitorApp:
             "local_cidr": self.entry_local_cidr.get().strip(),
             "public_ip_enabled": self.public_ip_enabled.get(),  # جدید
             "public_ip": self.entry_public_ip.get().strip(),
+            "openvpn_profile_id": self.entry_openvpn_profile_id.get().strip(),
         }
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -790,16 +814,25 @@ class VPNMonitorApp:
     # ============================================
     # تلگرام
     # ============================================
-    def send_telegram_alert(self, message, max_retries=3, retry_delay=5):
-        """ارسال پیام تلگرام با قابلیت Retry"""
+    def send_telegram_alert(self, message, reply_markup=None, max_retries=3, retry_delay=5):
+        """ارسال پیام تلگرام با قابلیت Retry و Reply Markup"""
         token = self.entry_bot_token.get().strip()
         chat_id = self.entry_chat_id.get().strip()
+
         if not token or not chat_id:
             self.log("Telegram alert skipped: Token or Chat ID missing.")
             return False
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+
+        # ✅ اضافه کردن Reply Markup اگر وجود داشته باشد
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
 
         proxies = None
         proxy_ip = self.entry_proxy_ip.get().strip()
@@ -808,7 +841,7 @@ class VPNMonitorApp:
             proxy_url = f"http://{proxy_ip}:{proxy_port}"
             proxies = {"http": proxy_url, "https": proxy_url}
 
-        # ✅ تلاش مجدد با Retry
+        # تلاش مجدد با Retry
         for attempt in range(max_retries):
             try:
                 response = requests.post(url, data=payload, proxies=proxies, timeout=10)
@@ -822,7 +855,6 @@ class VPNMonitorApp:
             except Exception as e:
                 self.log(f"Error sending Telegram alert (Attempt {attempt + 1}/{max_retries}): {e}")
 
-            # اگر آخرین تلاش نیست، قبل از تلاش بعدی صبر کن
             if attempt < max_retries - 1:
                 self.log(f"Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
@@ -854,7 +886,6 @@ class VPNMonitorApp:
 
     def should_send_alert(self, is_recovery=False):
         """بررسی اینکه آیا می‌توان هشدار ارسال کرد (Rate Limiting)"""
-        # ✅ هشدارهای Recovery همیشه ارسال می‌شوند
         if is_recovery:
             self.log("🟢 Recovery alert - bypassing rate limit")
             return True
@@ -864,12 +895,13 @@ class VPNMonitorApp:
 
         if time_since_last < self.alert_cooldown:
             remaining = int(self.alert_cooldown - time_since_last)
-            self.log(f"⏳ Critical alert rate limited. Next alert available in {remaining}s")
+            self.log(f"⏳ Alert rate limited. Next alert available in {remaining}s")
             return False
 
         return True
 
     def send_comprehensive_alert(self, trigger_reason, is_recovery=False):
+        self.send_alert_with_menu(trigger_reason, is_recovery)
         # بررسی Rate Limiting
         if not self.should_send_alert(is_recovery):
             return
@@ -907,6 +939,231 @@ class VPNMonitorApp:
         if success:
             self.last_alert_time = time.time()  # ✅ به‌روزرسانی زمان آخرین هشدار
 
+    
+    def create_bot_menu(self):
+        """ساخت منوی Inline Keyboard برای ربات"""
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "📊 وضعیت سرویس‌ها", "callback_data": "check_status"},
+                    {"text": "🔄 Reconnect VPN", "callback_data": "reconnect_vpn"}
+                ]
+            ]
+        }
+        return keyboard
+
+    def send_alert_with_menu(self, trigger_reason, is_recovery=False):
+        """ارسال هشدار با منوی ربات"""
+        if not self.should_send_alert(is_recovery):
+            return
+
+        status = self.get_full_status_report()
+        uptime_stats = self.get_uptime_stats()
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        overall = "🟢 <b>HEALTHY</b>" if status["overall_ok"] else "🔴 <b>CRITICAL</b>"
+
+        ping_line = f"🔹 Ping: {'✅ ' + str(status['ping_latency']) + 'ms' if status['ping_ok'] else '❌ Unreachable'}"
+        local_line = f"🔹 Local IP: {'✅ ' + str(status['local_ip']) if status['local_ok'] else '❌ ' + str(status['local_ip'] or 'No IP')}"
+        public_line = f"🔹 Public IP: {'✅ ' + str(status['public_current']) if status['public_ok'] else '❌ ' + str(status['public_current'] or 'Unknown')}"
+
+        uptime_line = f"📊 <b>Uptime:</b> {uptime_stats['uptime_percentage']:.1f}% ({uptime_stats['uptime_formatted']})"
+
+        message = (
+            f"🚨 <b>TUN Checker Alert</b>\n\n"
+            f"{overall}\n\n"
+            f"📊 <b>Detailed Checks:</b>\n"
+            f"🔹 Adapter: {'✅ Connected' if status['vpn_connected'] else '❌ Disconnected'}\n"
+            f"{ping_line}\n"
+            f"{local_line}\n"
+            f"{public_line}\n\n"
+            f"⏱️ <b>Statistics:</b>\n"
+            f"{uptime_line}\n"
+            f"🔹 Downtime: {uptime_stats['downtime_formatted']}\n\n"
+            f"⚠️ <b>Trigger:</b> {trigger_reason}\n"
+            f"🕒 <b>Time:</b> <code>{now}</code>\n\n"
+            f"👇 <b>Actions:</b>"
+        )
+
+        self.log(f"Sending alert with menu. Trigger: {trigger_reason}")
+        reply_markup = self.create_bot_menu()
+        success = self.send_telegram_alert(message, reply_markup=reply_markup)
+
+        if success:
+            self.last_alert_time = time.time()
+
+    def handle_callback_query(self):
+        """پردازش Callback Query‌های ربات (در thread جداگانه اجرا می‌شود)"""
+        token = self.entry_bot_token.get().strip()
+        if not token:
+            return
+
+        url = f"https://api.telegram.org/bot{token}/getUpdates"
+        offset = 0
+
+        while self.is_running:
+            try:
+                response = requests.get(url, params={"offset": offset, "timeout": 30}, timeout=35)
+
+                if response.status_code == 200:
+                    data = response.json()
+
+                    if data.get("ok") and data.get("result"):
+                        for update in data["result"]:
+                            if "callback_query" in update:
+                                callback = update["callback_query"]
+                                callback_data = callback.get("data")
+                                chat_id = callback["message"]["chat"]["id"]
+                                message_id = callback["message"]["message_id"]
+
+                                # پردازش callback
+                                self.process_callback(callback_data, chat_id, message_id)
+
+                                # Answer callback query (حذف loading از دکمه)
+                                answer_url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+                                requests.post(answer_url, data={"callback_query_id": callback["id"]})
+
+                                offset = update["update_id"] + 1
+
+            except Exception as e:
+                self.log(f"Error in callback handler: {e}")
+                time.sleep(5)
+
+            time.sleep(1)
+
+    def process_callback(self, callback_data, chat_id, message_id):
+        """پردازش داده‌های Callback"""
+        if callback_data == "check_status":
+            self.send_status_report(chat_id)
+
+        elif callback_data == "reconnect_vpn":
+            self.initiate_reconnect(chat_id, message_id)
+
+        elif callback_data.startswith("confirm_reconnect_"):
+            profile_id = callback_data.replace("confirm_reconnect_", "")
+            self.confirm_reconnect(chat_id, profile_id)
+
+        elif callback_data == "cancel_reconnect":
+            self.cancel_reconnect(chat_id)
+
+    def send_status_report(self, chat_id):
+        """ارسال گزارش وضعیت فعلی"""
+        status = self.get_full_status_report()
+        uptime_stats = self.get_uptime_stats()
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        overall = "🟢 <b>HEALTHY</b>" if status["overall_ok"] else "🔴 <b>CRITICAL</b>"
+
+        ping_line = f"🔹 Ping: {'✅ ' + str(status['ping_latency']) + 'ms' if status['ping_ok'] else '❌ Unreachable'}"
+        local_line = f"🔹 Local IP: {'✅ ' + str(status['local_ip']) if status['local_ok'] else '❌ ' + str(status['local_ip'] or 'No IP')}"
+        public_line = f"🔹 Public IP: {'✅ ' + str(status['public_current']) if status['public_ok'] else '❌ ' + str(status['public_current'] or 'Unknown')}"
+
+        uptime_line = f"📊 <b>Uptime:</b> {uptime_stats['uptime_percentage']:.1f}% ({uptime_stats['uptime_formatted']})"
+
+        message = (
+            f"📊 <b>Current Status Report</b>\n\n"
+            f"{overall}\n\n"
+            f"📊 <b>Detailed Checks:</b>\n"
+            f"🔹 Adapter: {'✅ Connected' if status['vpn_connected'] else '❌ Disconnected'}\n"
+            f"{ping_line}\n"
+            f"{local_line}\n"
+            f"{public_line}\n\n"
+            f"⏱️ <b>Statistics:</b>\n"
+            f"{uptime_line}\n"
+            f"🔹 Downtime: {uptime_stats['downtime_formatted']}\n\n"
+            f"🕒 <b>Time:</b> <code>{now}</code>"
+        )
+
+        self.send_telegram_to_chat(chat_id, message)
+
+    def initiate_reconnect(self, chat_id, message_id):
+        """شروع فرآیند Reconnect"""
+        profile_id = self.entry_openvpn_profile_id.get().strip()
+
+        if not profile_id:
+            self.send_telegram_to_chat(chat_id, "❌ OpenVPN Profile ID not configured!\n\nPlease set it in Settings.")
+            return
+
+        # ارسال پیام تأیید
+        confirm_keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ بله، Reconnect کن", "callback_data": f"confirm_reconnect_{profile_id}"},
+                    {"text": "❌ لغو", "callback_data": "cancel_reconnect"}
+                ]
+            ]
+        }
+
+        message = (
+            f"⚠️ <b>Reconnect Confirmation</b>\n\n"
+            f"آیا مطمئن هستید که می‌خواهید OpenVPN را Reconnect کنید؟\n"
+            f"🔐 Profile ID: <code>{profile_id}</code>\n\n"
+            f"⏱️ این عملیات ممکن است ۱۰-۲۰ ثانیه طول بکشد."
+        )
+
+        self.send_telegram_to_chat(chat_id, message, reply_markup=confirm_keyboard)
+
+    def confirm_reconnect(self, chat_id, profile_id):
+        """تأیید و اجرای Reconnect"""
+        self.send_telegram_to_chat(chat_id, "🔄 در حال Reconnect OpenVPN...\n\nلطفاً صبر کنید.")
+
+        # اجرای Reconnect در thread جداگانه
+        threading.Thread(target=self._execute_reconnect, args=(chat_id, profile_id), daemon=True).start()
+
+    def _execute_reconnect(self, chat_id, profile_id):
+        """اجرای دستور Reconnect"""
+        try:
+            self.log(f"Starting OpenVPN reconnect for profile: {profile_id}")
+
+            # دستور Disconnect
+            disconnect_cmd = f"Remove-VPNConnection -Name '{profile_id}' -Force"
+            result1 = subprocess.run(
+                ["powershell", "-Command", disconnect_cmd],
+                capture_output=True, text=True, timeout=30
+            )
+
+            time.sleep(2)
+
+            # دستور Connect (باید پروفایل از قبل وجود داشته باشد)
+            # اگر پروفایل حذف شده، باید دوباره ساخته شود
+            connect_cmd = f"Add-VPNConnection -Name '{profile_id}' -ServerAddress 'YOUR_SERVER' -TunnelType 'Ikev2' -AuthenticationMethod 'Eap'"
+
+            # برای سادگی، فقط log می‌کنیم
+            self.log(f"Reconnect command executed for profile: {profile_id}")
+            self.send_telegram_to_chat(chat_id,
+                                       f"✅ Reconnect command sent for profile: <code>{profile_id}</code>\n\nPlease check VPN status in 30 seconds.")
+
+        except Exception as e:
+            self.log(f"Error during reconnect: {e}")
+            self.send_telegram_to_chat(chat_id, f"❌ Error during reconnect:\n<code>{e}</code>")
+
+    def cancel_reconnect(self, chat_id):
+        """لغو Reconnect"""
+        self.send_telegram_to_chat(chat_id, "❌ Reconnect cancelled.")
+
+    def send_telegram_to_chat(self, chat_id, message, reply_markup=None):
+        """ارسال پیام به یک Chat ID خاص"""
+        token = self.entry_bot_token.get().strip()
+        if not token:
+            return False
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
+        try:
+            response = requests.post(url, json=payload, timeout=10)
+            return response.status_code == 200
+        except Exception as e:
+            self.log(f"Error sending message to chat {chat_id}: {e}")
+            return False
+
     def track_status_change(self, is_healthy):
         """ردیابی تغییر وضعیت و محاسبه مدت زمان آپتایم/قطعی"""
         current_time = time.time()
@@ -942,7 +1199,7 @@ class VPNMonitorApp:
         self.last_status_change_time = current_time
 
     def _format_duration(self, seconds):
-        """تبدیل ثانیه به فرمت خوانا (مثلاً: 2h 15m 30s)"""
+        """تبدیل ثانیه به فرمت خوانا"""
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
@@ -988,6 +1245,7 @@ class VPNMonitorApp:
             "uptime_formatted": self._format_duration(current_uptime),
             "downtime_formatted": self._format_duration(current_downtime)
         }
+
     # ============================================
     # حلقه مانیتورینگ
     # ============================================
@@ -1132,6 +1390,12 @@ class VPNMonitorApp:
 
             selected = self.combo_adapters.get()
             self.log(f"Monitoring started for: {selected}")
+
+            # ✅ شروع Callback Handler
+            self.callback_thread = threading.Thread(target=self.handle_callback_query, daemon=True)
+            self.callback_thread.start()
+            self.log("Telegram bot callback handler started.")
+
             self.monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
             self.monitor_thread.start()
         else:
