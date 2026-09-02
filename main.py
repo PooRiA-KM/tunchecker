@@ -438,7 +438,7 @@ class VPNMonitorApp:
     # متدهای کمکی UI
     # ============================================
     def log(self, message):
-        """ثبت لاگ در باکس و فایل"""
+        """ثبت لاگ در باکس و فایل با محدودیت"""
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         formatted = f"[{now}] {message}\n"
 
@@ -446,16 +446,55 @@ class VPNMonitorApp:
             try:
                 self.txt_logs.insert("end", formatted)
                 self.txt_logs.see("end")
+
+                # ✅ محدود کردن تعداد خطوط در Textbox (حداکثر ۵۰۰ خط)
+                line_count = int(self.txt_logs.index('end-1c').split('.')[0])
+                if line_count > 500:
+                    # حذف ۱۰۰ خط قدیمی
+                    self.txt_logs.delete("1.0", "100.0")
+                    self.log("🗑️ Old logs cleared from UI (keeping last 500 lines)")
             except Exception:
                 pass
 
         self.root.after(0, _update)
 
+        # ✅ Log Rotation: بررسی حجم فایل
         try:
+            if os.path.exists(LOG_FILE):
+                file_size = os.path.getsize(LOG_FILE)
+                # اگر فایل بیشتر از ۱ مگابایت شد، آن را بایگانی کن
+                if file_size > 1_000_000:  # ۱ مگابایت
+                    self._rotate_log_file()
+
             with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(formatted)
         except Exception as e:
             print(f"خطا در نوشتن لاگ: {e}")
+
+    def _rotate_log_file(self):
+        """چرخش فایل لاگ وقتی از ۱ مگابایت بیشتر شود"""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_file = f"app_logs_{timestamp}.txt"
+
+            # تغییر نام فایل فعلی
+            os.rename(LOG_FILE, backup_file)
+
+            self.log(f"📦 Log file rotated: {backup_file}")
+
+            # حذف فایل‌های بایگانی قدیمی (نگه داشتن ۵ فایل آخر)
+            log_files = [f for f in os.listdir('.') if f.startswith("app_logs_") and f.endswith(".txt")]
+            log_files.sort(reverse=True)
+
+            for old_file in log_files[5:]:
+                try:
+                    os.remove(old_file)
+                    print(f"Deleted old log: {old_file}")
+                except Exception as e:
+                    print(f"Error deleting old log {old_file}: {e}")
+
+        except Exception as e:
+            print(f"Error rotating log file: {e}")
 
     def toggle_token_visibility(self):
         if self.show_token:
