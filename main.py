@@ -105,6 +105,13 @@ class VPNMonitorApp:
         self.last_alert_time = 0  # ✅ جدید: زمان آخرین هشدار
         self.alert_cooldown = 15  # ✅ جدید: حداقل ۶۰ ثانیه بین دو هشدار
 
+        # ✅ متغیرهای Uptime/Downtime Tracking
+        self.uptime_start_time = None  # زمان شروع آخرین دوره آپتایم
+        self.downtime_start_time = None  # زمان شروع آخرین دوره قطعی
+        self.total_uptime_seconds = 0  # مجموع کل آپتایم
+        self.total_downtime_seconds = 0  # مجموع کل قطعی
+        self.last_status_change_time = None  # زمان آخرین تغییر وضعیت
+
         # متغیرهای چک‌باکس‌ها
         self.ping_enabled = ctk.BooleanVar(value=False)
         self.local_cidr_enabled = ctk.BooleanVar(value=False)  # جدید
@@ -683,7 +690,7 @@ class VPNMonitorApp:
             return None
 
     def perform_ping(self, target_ip, packets=3, success_threshold=2):
-        
+
         try:
             result = subprocess.run(
                 ["ping", "-n", str(packets), "-w", "1000", target_ip],
@@ -863,17 +870,21 @@ class VPNMonitorApp:
         return True
 
     def send_comprehensive_alert(self, trigger_reason, is_recovery=False):
-        # ✅ بررسی Rate Limiting قبل از ارسال
+        # بررسی Rate Limiting
         if not self.should_send_alert(is_recovery):
             return
 
         status = self.get_full_status_report()
+        uptime_stats = self.get_uptime_stats()  # ✅ دریافت آمار آپتایم
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         overall = "🟢 <b>HEALTHY</b>" if status["overall_ok"] else "🔴 <b>CRITICAL</b>"
 
         ping_line = f"🔹 Ping: {'✅ ' + str(status['ping_latency']) + 'ms' if status['ping_ok'] else '❌ Unreachable'}"
         local_line = f"🔹 Local IP: {'✅ ' + str(status['local_ip']) if status['local_ok'] else '❌ ' + str(status['local_ip'] or 'No IP')}"
         public_line = f"🔹 Public IP: {'✅ ' + str(status['public_current']) if status['public_ok'] else '❌ ' + str(status['public_current'] or 'Unknown')}"
+
+        # ✅ اضافه کردن آمار آپتایم به پیام
+        uptime_line = f"📊 <b>Uptime:</b> {uptime_stats['uptime_percentage']:.1f}% ({uptime_stats['uptime_formatted']})"
 
         message = (
             f"🚨 <b>TUN Checker Alert</b>\n\n"
@@ -883,6 +894,9 @@ class VPNMonitorApp:
             f"{ping_line}\n"
             f"{local_line}\n"
             f"{public_line}\n\n"
+            f"⏱️ <b>Statistics:</b>\n"
+            f"{uptime_line}\n"
+            f"🔹 Downtime: {uptime_stats['downtime_formatted']}\n\n"
             f"⚠️ <b>Trigger:</b> {trigger_reason}\n"
             f"🕒 <b>Time:</b> <code>{now}</code>"
         )
@@ -893,6 +907,87 @@ class VPNMonitorApp:
         if success:
             self.last_alert_time = time.time()  # ✅ به‌روزرسانی زمان آخرین هشدار
 
+    def track_status_change(self, is_healthy):
+        """ردیابی تغییر وضعیت و محاسبه مدت زمان آپتایم/قطعی"""
+        current_time = time.time()
+
+        if self.last_status_change_time is None:
+            # اولین بار
+            self.last_status_change_time = current_time
+            if is_healthy:
+                self.uptime_start_time = current_time
+            else:
+                self.downtime_start_time = current_time
+            return
+
+        time_since_last_change = current_time - self.last_status_change_time
+
+        # محاسبه مدت زمان وضعیت قبلی
+        if self.uptime_start_time is not None:
+            self.total_uptime_seconds += time_since_last_change
+            self.uptime_start_time = None
+
+        if self.downtime_start_time is not None:
+            self.total_downtime_seconds += time_since_last_change
+            self.downtime_start_time = None
+
+        # شروع وضعیت جدید
+        if is_healthy:
+            self.uptime_start_time = current_time
+            self.log(f"📊 Uptime tracking: System recovered after {self._format_duration(time_since_last_change)}")
+        else:
+            self.downtime_start_time = current_time
+            self.log(f"📊 Downtime tracking: System down for {self._format_duration(time_since_last_change)}")
+
+        self.last_status_change_time = current_time
+
+    def _format_duration(self, seconds):
+        """تبدیل ثانیه به فرمت خوانا (مثلاً: 2h 15m 30s)"""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+
+        if hours > 0:
+            return f"{hours}h {minutes}m {secs}s"
+        elif minutes > 0:
+            return f"{minutes}m {secs}s"
+        else:
+            return f"{secs}s"
+
+    def get_uptime_stats(self):
+        """دریافت آمار آپتایم/قطعی"""
+        current_time = time.time()
+
+        # محاسبه زمان وضعیت فعلی
+        current_uptime = self.total_uptime_seconds
+        current_downtime = self.total_downtime_seconds
+
+        if self.uptime_start_time is not None:
+            current_uptime += (current_time - self.uptime_start_time)
+
+        if self.downtime_start_time is not None:
+            current_downtime += (current_time - self.downtime_start_time)
+
+        total_time = current_uptime + current_downtime
+
+        if total_time == 0:
+            return {
+                "uptime_seconds": 0,
+                "downtime_seconds": 0,
+                "uptime_percentage": 0,
+                "uptime_formatted": "0s",
+                "downtime_formatted": "0s"
+            }
+
+        uptime_percentage = (current_uptime / total_time) * 100 if total_time > 0 else 0
+
+        return {
+            "uptime_seconds": current_uptime,
+            "downtime_seconds": current_downtime,
+            "uptime_percentage": uptime_percentage,
+            "uptime_formatted": self._format_duration(current_uptime),
+            "downtime_formatted": self._format_duration(current_downtime)
+        }
     # ============================================
     # حلقه مانیتورینگ
     # ============================================
@@ -933,6 +1028,9 @@ class VPNMonitorApp:
                     was_connected = False
 
                 current_overall = status["overall_ok"]
+                # ✅ ردیابی تغییر وضعیت
+                if current_overall != self.last_overall_status:
+                    self.track_status_change(current_overall)
 
                 if not current_overall and self.last_overall_status:
                     # ❌ Critical alert - rate limited می‌شود
