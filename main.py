@@ -682,32 +682,53 @@ class VPNMonitorApp:
         except Exception:
             return None
 
-    def perform_ping(self, target_ip):
-        """اجرای پینگ و برگرداندن (موفقیت, latency_ms)"""
+    def perform_ping(self, target_ip, packets=3, success_threshold=2):
+        
         try:
             result = subprocess.run(
-                ["ping", "-n", "1", "-w", "1000", target_ip],
+                ["ping", "-n", str(packets), "-w", "1000", target_ip],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW,
-                timeout=3
+                timeout=packets + 2  # ✅ timeout متناسب با تعداد پکت‌ها
             )
+
             output = result.stdout.decode('utf-8', errors='ignore').lower()
 
             if result.returncode != 0:
-                return False, None
+                # بررسی اینکه آیا حداقل یک پکت موفق بوده
+                if "received = 0" in output or "دریافت = 0" in output:
+                    return False, None
 
             error_keywords = ["ttl expired", "unreachable", "failed",
                               "منقضی شد", "غیرقابل دسترسی"]
             if any(k in output for k in error_keywords):
                 return False, None
 
+            # ✅ استخراج تعداد پکت‌های دریافت شده
+            received_match = re.search(r'received\s*=\s*(\d+)', output) or \
+                             re.search(r'دریافت\s*=\s*(\d+)', output)
+
+            if received_match:
+                received = int(received_match.group(1))
+                if received < success_threshold:
+                    self.log(f"Ping: Only {received}/{packets} packets received (threshold: {success_threshold})")
+                    return False, None
+
             # استخراج latency از خروجی پینگ ویندوز
             match = re.search(r'time[=<](\d+)ms', output) or \
                     re.search(r'زمان[=<](\d+)', output)
+
             if match:
-                return True, int(match.group(1))
+                latency = int(match.group(1))
+                return True, latency
+
             return True, None
-        except Exception:
+
+        except subprocess.TimeoutExpired:
+            self.log(f"Ping timeout after {packets + 2} seconds")
+            return False, None
+        except Exception as e:
+            self.log(f"Ping error: {e}")
             return False, None
 
     # ============================================
@@ -762,7 +783,8 @@ class VPNMonitorApp:
     # ============================================
     # تلگرام
     # ============================================
-    def send_telegram_alert(self, message):
+    def send_telegram_alert(self, message, max_retries=3, retry_delay=5):
+        """ارسال پیام تلگرام با قابلیت Retry"""
         token = self.entry_bot_token.get().strip()
         chat_id = self.entry_chat_id.get().strip()
         if not token or not chat_id:
@@ -779,17 +801,27 @@ class VPNMonitorApp:
             proxy_url = f"http://{proxy_ip}:{proxy_port}"
             proxies = {"http": proxy_url, "https": proxy_url}
 
-        try:
-            response = requests.post(url, data=payload, proxies=proxies, timeout=10)
-            if response.status_code == 200:
-                self.log("Telegram alert sent successfully.")
-                return True
-            else:
-                self.log(f"Failed to send alert. HTTP {response.status_code}")
-                return False
-        except Exception as e:
-            self.log(f"Error sending Telegram alert: {e}")
-            return False
+        # ✅ تلاش مجدد با Retry
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, data=payload, proxies=proxies, timeout=10)
+
+                if response.status_code == 200:
+                    self.log("Telegram alert sent successfully.")
+                    return True
+                else:
+                    self.log(f"Failed to send alert. HTTP {response.status_code} (Attempt {attempt + 1}/{max_retries})")
+
+            except Exception as e:
+                self.log(f"Error sending Telegram alert (Attempt {attempt + 1}/{max_retries}): {e}")
+
+            # اگر آخرین تلاش نیست، قبل از تلاش بعدی صبر کن
+            if attempt < max_retries - 1:
+                self.log(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+
+        self.log("❌ All retry attempts failed. Alert not sent.")
+        return False
 
     def test_telegram(self):
         token = self.entry_bot_token.get().strip()
