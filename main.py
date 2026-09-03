@@ -114,6 +114,7 @@ class VPNMonitorApp:
 
         # ✅ متغیرهای منوی ربات
         self.pending_reconnect = False  # آیا منتظر تأیید reconnect هستیم؟
+        self.entry_openvpn_shortcut_id = None
 
         # متغیرهای چک‌باکس‌ها
         self.ping_enabled = ctk.BooleanVar(value=False)
@@ -271,20 +272,20 @@ class VPNMonitorApp:
         )
         self.btn_test_telegram.pack(fill="x", padx=10, pady=(0, 10))
 
-        # --- کارت 4: OpenVPN Profile ---
-        card4 = CardFrame(scroll_frame, "🔐 OpenVPN Profile")
+        # --- کارت 4: OpenVPN Reconnect ---
+        card4 = CardFrame(scroll_frame, "🔌 OpenVPN Reconnect Settings")
         card4.pack(fill="x", padx=3, pady=4)
         inner4 = ctk.CTkFrame(card4, fg_color="transparent")
         inner4.pack(fill="x", padx=10, pady=(0, 8))
 
-        ctk.CTkLabel(inner4, text="Profile ID:", font=default_font,
+        ctk.CTkLabel(inner4, text="Shortcut ID:", font=default_font,
                      text_color=COLORS["text_secondary"]).grid(row=0, column=0, sticky="w", pady=5)
-        self.entry_openvpn_profile_id = ctk.CTkEntry(
+        self.entry_openvpn_shortcut_id = ctk.CTkEntry(
             inner4, width=280, font=default_font,
             fg_color=COLORS["bg_tertiary"], border_color=COLORS["border"],
             text_color=COLORS["text_primary"], placeholder_text="Enter OpenVPN Profile ID"
         )
-        self.entry_openvpn_profile_id.grid(row=0, column=1, padx=10, pady=5)
+        self.entry_openvpn_shortcut_id.grid(row=0, column=1, padx=10, pady=5)
 
         ctk.CTkLabel(inner4, text="💡 Find in PowerShell: OpenVPNConnect.exe --list-profiles",
                      font=small_font, text_color=COLORS["text_secondary"]).grid(row=1, column=0, columnspan=2,
@@ -592,7 +593,7 @@ class VPNMonitorApp:
                 "local_cidr": (self.entry_local_cidr, "entry"),
                 "public_ip_enabled": (self.public_ip_enabled, "bool"),  # جدید
                 "public_ip": (self.entry_public_ip, "entry"),
-                "openvpn_profile_id": (self.entry_openvpn_profile_id, "entry"),
+                "openvpn_profile_id": (self.entry_openvpn_shortcut_id, "entry"),
             }
 
             for key, (widget, wtype) in fields.items():
@@ -624,7 +625,7 @@ class VPNMonitorApp:
             "local_cidr": self.entry_local_cidr.get().strip(),
             "public_ip_enabled": self.public_ip_enabled.get(),  # جدید
             "public_ip": self.entry_public_ip.get().strip(),
-            "openvpn_profile_id": self.entry_openvpn_profile_id.get().strip(),
+            "openvpn_profile_id": self.entry_openvpn_shortcut_id.get().strip(),
         }
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -1076,17 +1077,18 @@ class VPNMonitorApp:
 
     def initiate_reconnect(self, chat_id, message_id):
         """شروع فرآیند Reconnect"""
-        profile_id = self.entry_openvpn_profile_id.get().strip()
+        shortcut_id = self.entry_openvpn_shortcut_id.get().strip()
 
-        if not profile_id:
-            self.send_telegram_to_chat(chat_id, "❌ OpenVPN Profile ID not configured!\n\nPlease set it in Settings.")
+        if not shortcut_id:
+            self.send_telegram_to_chat(chat_id,
+                                       "❌ OpenVPN Shortcut ID not configured!\n\nPlease set it in Settings → OpenVPN Reconnect Settings.")
             return
 
         # ارسال پیام تأیید
         confirm_keyboard = {
             "inline_keyboard": [
                 [
-                    {"text": "✅ بله، Reconnect کن", "callback_data": f"confirm_reconnect_{profile_id}"},
+                    {"text": "✅ بله، Reconnect کن", "callback_data": f"confirm_reconnect_{shortcut_id}"},
                     {"text": "❌ لغو", "callback_data": "cancel_reconnect"}
                 ]
             ]
@@ -1095,42 +1097,61 @@ class VPNMonitorApp:
         message = (
             f"⚠️ <b>Reconnect Confirmation</b>\n\n"
             f"آیا مطمئن هستید که می‌خواهید OpenVPN را Reconnect کنید؟\n"
-            f"🔐 Profile ID: <code>{profile_id}</code>\n\n"
+            f"🔐 Shortcut ID: <code>{shortcut_id}</code>\n\n"
             f"⏱️ این عملیات ممکن است ۱۰-۲۰ ثانیه طول بکشد."
         )
 
         self.send_telegram_to_chat(chat_id, message, reply_markup=confirm_keyboard)
 
-    def confirm_reconnect(self, chat_id, profile_id):
+    def confirm_reconnect(self, chat_id, shortcut_id):
         """تأیید و اجرای Reconnect"""
-        self.send_telegram_to_chat(chat_id, "🔄 در حال Reconnect OpenVPN...\n\nلطفاً صبر کنید.")
+        self.send_telegram_to_chat(chat_id, "🔄 در حال اجرای دستور Reconnect...\n\nلطفاً صبر کنید.")
 
         # اجرای Reconnect در thread جداگانه
-        threading.Thread(target=self._execute_reconnect, args=(chat_id, profile_id), daemon=True).start()
+        threading.Thread(target=self._execute_reconnect, args=(chat_id, shortcut_id), daemon=True).start()
 
-    def _execute_reconnect(self, chat_id, profile_id):
-        """اجرای دستور Reconnect"""
+    def _execute_reconnect(self, chat_id, shortcut_id):
+        """اجرای دستور Reconnect OpenVPN Connect"""
         try:
-            self.log(f"Starting OpenVPN reconnect for profile: {profile_id}")
+            self.log(f"Starting OpenVPN reconnect with shortcut: {shortcut_id}")
 
-            # دستور Disconnect
-            disconnect_cmd = f"Remove-VPNConnection -Name '{profile_id}' -Force"
-            result1 = subprocess.run(
-                ["powershell", "-Command", disconnect_cmd],
-                capture_output=True, text=True, timeout=30
+            exe_path = r"C:\Program Files\OpenVPN Connect\OpenVPNConnect.exe"
+
+            # بررسی وجود فایل اجرایی
+            if not os.path.exists(exe_path):
+                error_msg = f"❌ OpenVPN Connect not found at:\n{exe_path}"
+                self.log(error_msg)
+                self.send_telegram_to_chat(chat_id, error_msg)
+                return
+
+            # ساخت دستور
+            cmd = [exe_path, f"--connect-shortcut={shortcut_id}"]
+
+            self.log(f"Executing: {' '.join(cmd)}")
+
+            # اجرای دستور بدون نمایش پنجره CMD
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                timeout=15
             )
 
-            time.sleep(2)
+            self.log(f"OpenVPN reconnect executed. Return code: {result.returncode}")
 
-            # دستور Connect (باید پروفایل از قبل وجود داشته باشد)
-            # اگر پروفایل حذف شده، باید دوباره ساخته شود
-            connect_cmd = f"Add-VPNConnection -Name '{profile_id}' -ServerAddress 'YOUR_SERVER' -TunnelType 'Ikev2' -AuthenticationMethod 'Eap'"
+            # ارسال پیام موفقیت
+            success_msg = (
+                f"✅ <b>Reconnect Command Executed</b>\n\n"
+                f"🔐 Shortcut ID: <code>{shortcut_id}</code>\n"
+                f"📊 Return Code: {result.returncode}\n\n"
+                f"⏱️ لطفاً ۱۵-۲۰ ثانیه صبر کنید و سپس وضعیت را بررسی کنید."
+            )
+            self.send_telegram_to_chat(chat_id, success_msg)
 
-            # برای سادگی، فقط log می‌کنیم
-            self.log(f"Reconnect command executed for profile: {profile_id}")
-            self.send_telegram_to_chat(chat_id,
-                                       f"✅ Reconnect command sent for profile: <code>{profile_id}</code>\n\nPlease check VPN status in 30 seconds.")
-
+        except subprocess.TimeoutExpired:
+            self.log("OpenVPN reconnect timed out after 15 seconds")
+            self.send_telegram_to_chat(chat_id, "⚠️ Reconnect command timed out.\nPlease check OpenVPN manually.")
         except Exception as e:
             self.log(f"Error during reconnect: {e}")
             self.send_telegram_to_chat(chat_id, f"❌ Error during reconnect:\n<code>{e}</code>")
@@ -1432,6 +1453,7 @@ class VPNMonitorApp:
         except AttributeError:
             pass
 
+        self.entry_openvpn_shortcut_id.configure(state="disabled" if disabled else "normal")
 
 # ============================================
 # نقطه شروع
