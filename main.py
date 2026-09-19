@@ -1110,10 +1110,10 @@ class VPNMonitorApp:
         # اجرای Reconnect در thread جداگانه
         threading.Thread(target=self._execute_reconnect, args=(chat_id, shortcut_id), daemon=True).start()
 
-    def _execute_reconnect(self, chat_id, shortcut_id):
-        """اجرای دستور Reconnect OpenVPN Connect"""
+    def _execute_reconnect(self, chat_id, profile_id):
+        """اجرای دستور Reconnect - با بستن اجباری پنجره‌های باز OpenVPN Connect"""
         try:
-            self.log(f"Starting OpenVPN reconnect with shortcut: {shortcut_id}")
+            self.log(f"Starting OpenVPN reconnect with shortcut: {profile_id}")
 
             exe_path = r"C:\Program Files\OpenVPN Connect\OpenVPNConnect.exe"
 
@@ -1124,34 +1124,42 @@ class VPNMonitorApp:
                 self.send_telegram_to_chat(chat_id, error_msg)
                 return
 
-            # ساخت دستور
-            cmd = [exe_path, f"--connect-shortcut={shortcut_id}"]
+            # ✅ مرحله ۱: بستن اجباری UI و تمام دیالوگ‌های باز (مثل Authentication failed)
+            # چون OpenVPN Connect تک‌نمونه‌ای است، تا وقتی دیالوگ مودال باز است
+            # دستور جدید نادیده گرفته می‌شود. با kill کردن، قفل شکسته می‌شود.
+            self.log("Step 1: Force-closing OpenVPN Connect UI (taskkill)...")
+            try:
+                kill_result = subprocess.run(
+                    ["taskkill", "/F", "/IM", "OpenVPNConnect.exe", "/T"],
+                    capture_output=True, text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    timeout=10
+                )
+                self.log(f"taskkill: {(kill_result.stdout or kill_result.stderr).strip()}")
+            except Exception as kill_err:
+                self.log(f"taskkill warning: {kill_err}")
 
-            self.log(f"Executing: {' '.join(cmd)}")
+            # صبر برای خروج کامل پروسه‌ها و آزاد شدن قفل single-instance
+            time.sleep(3)
 
-            # اجرای دستور بدون نمایش پنجره CMD
-            result = subprocess.run(
+            # ✅ مرحله ۲: اجرای دستور اتصال (بدون منتظر ماندن برای خروج برنامه)
+            cmd = [exe_path, f"--connect-shortcut={profile_id}"]
+            self.log(f"Step 2: Executing: {' '.join(cmd)}")
+
+            subprocess.Popen(
                 cmd,
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                timeout=15
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
             )
 
-            self.log(f"OpenVPN reconnect executed. Return code: {result.returncode}")
-
-            # ارسال پیام موفقیت
+            self.log("OpenVPN reconnect command launched successfully.")
             success_msg = (
                 f"✅ <b>Reconnect Command Executed</b>\n\n"
-                f"🔐 Shortcut ID: <code>{shortcut_id}</code>\n"
-                f"📊 Return Code: {result.returncode}\n\n"
+                f"🔐 Shortcut ID: <code>{profile_id}</code>\n"
+                f"🧹 OpenVPN Connect UI force-closed first (bypass open dialogs)\n\n"
                 f"⏱️ لطفاً ۱۵-۲۰ ثانیه صبر کنید و سپس وضعیت را بررسی کنید."
             )
             self.send_telegram_to_chat(chat_id, success_msg)
 
-        except subprocess.TimeoutExpired:
-            self.log("OpenVPN reconnect timed out after 15 seconds")
-            self.send_telegram_to_chat(chat_id, "⚠️ Reconnect command timed out.\nPlease check OpenVPN manually.")
         except Exception as e:
             self.log(f"Error during reconnect: {e}")
             self.send_telegram_to_chat(chat_id, f"❌ Error during reconnect:\n<code>{e}</code>")
